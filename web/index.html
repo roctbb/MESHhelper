@@ -1,0 +1,723 @@
+<!doctype html>
+<html lang="ru">
+<head>
+    <meta charset="UTF-8"/>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+    <title>MESH Marks Viewer</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com"/>
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin/>
+    <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;600;700;800&display=swap"
+          rel="stylesheet"/>
+    <link
+            href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css"
+            rel="stylesheet"
+    />
+    <style>
+        :root {
+            --bg-a: #f2f7ff;
+            --bg-b: #f7f9fc;
+            --line: #dbe3f0;
+            --line-soft: #e8edf6;
+            --text-main: #1f2a37;
+            --text-muted: #607086;
+            --panel-shadow: 0 12px 34px rgba(26, 41, 65, 0.08);
+            --panel-shadow-soft: 0 6px 18px rgba(26, 41, 65, 0.05);
+            --accent: #1e5db6;
+            --accent-soft: #e9f1ff;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Manrope', 'Segoe UI', sans-serif;
+            color: var(--text-main);
+            background: radial-gradient(1100px 500px at 8% 4%, #e7f1ff 0%, transparent 60%),
+            radial-gradient(800px 420px at 95% 0%, #e9fff2 0%, transparent 55%),
+            linear-gradient(180deg, var(--bg-a), var(--bg-b));
+            min-height: 100vh;
+        }
+
+        .app-shell {
+            min-height: 100vh;
+            padding-top: 14px;
+            padding-bottom: 14px;
+        }
+
+        .app-shell.sidebar-collapsed .sidebar-col {
+            display: none;
+        }
+
+        .app-shell.sidebar-collapsed .main-col {
+            flex: 0 0 100%;
+            max-width: 100%;
+            width: 100%;
+        }
+
+        .panel {
+            background: #fff;
+            border: 1px solid var(--line-soft);
+            border-radius: 16px;
+            box-shadow: var(--panel-shadow-soft);
+        }
+
+        .hero-panel {
+            background: linear-gradient(130deg, rgba(35, 91, 177, 0.94), rgba(18, 146, 105, 0.9)),
+            linear-gradient(130deg, #2456a7, #138f69);
+            color: #fff;
+            border: 0;
+            box-shadow: var(--panel-shadow);
+        }
+
+        .hero-title {
+            font-weight: 800;
+            letter-spacing: 0.2px;
+        }
+
+        .hero-subtitle {
+            color: rgba(255, 255, 255, 0.84);
+            font-weight: 500;
+            margin-bottom: 0;
+        }
+
+        .legend-badge {
+            font-size: 14px;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+            border: 1px solid rgba(255, 255, 255, 0.35);
+        }
+
+        .students {
+            overflow-x: hidden;
+            border: 1px solid var(--line-soft);
+            border-radius: 12px;
+            background: linear-gradient(180deg, #fff, #fbfdff);
+        }
+
+        .student-btn {
+            width: 100%;
+            text-align: left;
+            border: 0;
+            background: transparent;
+            padding: 11px 12px;
+            border-bottom: 1px solid #edf2fa;
+            font-size: 16px;
+            transition: background-color 0.16s ease, transform 0.16s ease;
+        }
+
+        .student-btn:hover {
+            background: #f4f8ff;
+            transform: translateX(1px);
+        }
+
+        .student-btn.active {
+            background: linear-gradient(90deg, #eaf2ff, #e7f8f0);
+            color: #124f95;
+            font-weight: 600;
+            box-shadow: inset 3px 0 0 #2f6fcb;
+        }
+
+        .student-btn.year-risk-key {
+            background: #fde8e8;
+        }
+
+        .student-btn.year-risk-key:hover {
+            background: #fcdada;
+        }
+
+        .student-btn.year-risk-key.active {
+            background: linear-gradient(90deg, #fde8e8, #fcdada);
+            box-shadow: inset 3px 0 0 #d9534f;
+        }
+
+        .student-line {
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            gap: 8px;
+        }
+
+        .student-name {
+            flex: 1;
+            min-width: 0;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
+        }
+
+        .side-title {
+            font-weight: 800;
+            color: #203148;
+        }
+
+        .meta-text {
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        .form-control,
+        .form-select {
+            border-color: #d8e2f2;
+            border-radius: 10px;
+            font-size: 16px;
+        }
+
+        .form-control:focus,
+        .form-select:focus {
+            border-color: #78a3df;
+            box-shadow: 0 0 0 0.2rem rgba(54, 124, 214, 0.14);
+        }
+
+        .table-wrap {
+            border: 1px solid var(--line-soft);
+            border-radius: 12px;
+            background: #fff;
+        }
+
+        .month-title {
+            font-size: 13px;
+            color: #5f6f84;
+            margin-bottom: 4px;
+            font-weight: 700;
+            letter-spacing: 0.2px;
+            text-transform: capitalize;
+        }
+
+        .mark-badge {
+            cursor: default;
+            font-weight: 600;
+            min-width: 28px;
+            text-align: center;
+            box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.09);
+        }
+
+        .table {
+            --bs-table-bg: transparent;
+            margin-bottom: 0;
+        }
+
+        .table thead th {
+            background: rgba(245, 249, 255, 0.96);
+            backdrop-filter: blur(5px);
+            border-bottom: 1px solid #d9e4f4;
+            color: #2e3f57;
+            font-size: 14px;
+            text-transform: uppercase;
+            letter-spacing: 0.32px;
+            font-weight: 800;
+        }
+
+        .table tbody td {
+            border-color: #edf2fa;
+            font-size: 15px;
+        }
+
+        .table tbody tr:hover td {
+            background: #f7fbff;
+        }
+
+        .table tbody td:first-child {
+            font-weight: 700;
+            color: #25354a;
+        }
+
+        .stats-chip {
+            border-radius: 999px;
+            border: 1px solid #dce7f7;
+            background: linear-gradient(180deg, #ffffff, #f5f9ff);
+            color: #38506d;
+            font-weight: 700;
+            padding: 6px 10px;
+            font-size: 12px;
+        }
+
+        .marks-cell {
+            min-width: 340px;
+        }
+
+        th.avg-col,
+        td.avg-col {
+            width: 62px;
+            min-width: 62px;
+            max-width: 62px;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        th.annual-col,
+        td.annual-col {
+            width: 88px;
+            min-width: 88px;
+            max-width: 88px;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        th.abs-col,
+        td.abs-col {
+            width: 74px;
+            min-width: 74px;
+            max-width: 74px;
+            text-align: center;
+            white-space: nowrap;
+        }
+
+        @media (max-width: 991px) {
+            .hero-panel {
+                border-radius: 14px;
+            }
+
+            .marks-cell {
+                min-width: 240px;
+            }
+        }
+    </style>
+</head>
+<body>
+<div class="container-fluid p-3 app-shell">
+    <section class="panel hero-panel p-3 p-lg-4 mb-3">
+        <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
+            <div>
+                <h1 class="h4 mb-1 hero-title">Аналитика успеваемости МЭШ</h1>
+                <p class="hero-subtitle">Быстрый обзор по ученикам, триместрам и рискам в одном окне.</p>
+            </div>
+            <div class="d-flex flex-wrap gap-2">
+                <button id="toggleSidebar" class="btn btn-sm btn-light ms-1">Скрыть список</button>
+            </div>
+        </div>
+    </section>
+
+    <div class="row g-3">
+        <div class="col-lg-4 col-xl-3 sidebar-col">
+            <section class="panel p-3 h-100">
+                <h2 class="h5 mb-1 side-title">Ученики</h2>
+                <div class="small mb-2 meta-text" id="meta">Загрузка...</div>
+                <div class="d-flex gap-2 mb-2">
+                    <input class="form-control form-control-sm" id="search" placeholder="Поиск по ФИО"/>
+                </div>
+                <div class="mb-3">
+                    <select id="sort" class="form-select form-select-sm">
+                        <option value="avg_desc">Сначала сильные (по средней)</option>
+                        <option value="avg_asc">Сначала слабые (по средней)</option>
+                        <option value="name_asc">По алфавиту А-Я</option>
+                        <option value="name_desc">По алфавиту Я-А</option>
+                    </select>
+                </div>
+                <div class="form-check mb-3">
+                    <input class="form-check-input" type="checkbox" id="showHidden"/>
+                    <label class="form-check-label small text-secondary" for="showHidden">
+                        Показывать скрытых
+                    </label>
+                </div>
+                <div class="students" id="students"></div>
+            </section>
+        </div>
+
+        <div class="col-lg-8 col-xl-9 main-col">
+            <section class="panel p-3 h-100 d-flex flex-column">
+                <h2 class="h5 mb-3 side-title" id="studentTitle">Выберите ученика</h2>
+                <div class="d-flex flex-wrap gap-2 mb-3" id="stats"></div>
+                <div class="table-wrap">
+                    <table class="table table-sm align-middle mb-0">
+                        <thead class="table-light position-sticky top-0">
+                        <tr>
+                            <th>Предмет</th>
+                            <th id="th-t1" class="avg-col" title="1 триместр">1</th>
+                            <th id="th-t2" class="avg-col" title="2 триместр">2</th>
+                            <th id="th-t3" class="avg-col" title="3 триместр">3</th>
+                  <th class="annual-col" title="Годовая">Г</th>
+                  <th class="abs-col" title="Пропуски">Н</th>
+                            <th>Отметки по триместрам</th>
+                        </tr>
+                        </thead>
+                        <tbody id="marksBody">
+                        <tr>
+                            <td colspan="7" class="text-secondary p-3">Выберите ученика слева</td>
+                        </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script>
+    const studentsEl = document.getElementById('students');
+    const searchEl = document.getElementById('search');
+    const sortEl = document.getElementById('sort');
+    const showHiddenEl = document.getElementById('showHidden');
+    const metaEl = document.getElementById('meta');
+    const titleEl = document.getElementById('studentTitle');
+    const statsEl = document.getElementById('stats');
+    const bodyEl = document.getElementById('marksBody');
+    const thT1 = document.getElementById('th-t1');
+    const thT2 = document.getElementById('th-t2');
+    const thT3 = document.getElementById('th-t3');
+    const appShellEl = document.querySelector('.app-shell');
+    const toggleSidebarEl = document.getElementById('toggleSidebar');
+
+    let allStudents = [];
+    let activeStudent = '';
+    let trimesterLabels = ['1 триместр', '2 триместр', '3 триместр'];
+    let currentTrimesterLabel = '3 триместр';
+    let showHidden = false;
+    let filesCount = 0;
+    let TREND_WINDOW = 10;
+    let sidebarCollapsed = false;
+
+    async function getJson(url) {
+        const res = await fetch(url);
+        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        return res.json();
+    }
+
+    async function postJson(url, body) {
+        const res = await fetch(url, {
+            method: 'POST',
+            headers: {'Content-Type': 'application/json'},
+            body: JSON.stringify(body || {})
+        });
+        if (!res.ok) {
+            let message = `${res.status} ${res.statusText}`;
+            try {
+                const data = await res.json();
+                if (data && data.error) message = data.error;
+            } catch (_) {
+            }
+            throw new Error(message);
+        }
+        return res.json();
+    }
+
+    function escapeHtml(value) {
+        return String(value ?? '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;')
+            .replace(/"/g, '&quot;')
+            .replace(/'/g, '&#039;');
+    }
+
+    function badgeClass(mark) {
+        const s = String(mark || '').replace(',', '.');
+        const n = Number.parseFloat(s);
+        if (!Number.isFinite(n)) return 'text-bg-secondary';
+        if (n >= 9) return 'text-bg-success';
+        if (n >= 7) return 'text-bg-primary';
+        if (n >= 5) return 'text-bg-warning';
+        return 'text-bg-danger';
+    }
+
+    function avgBadge(average) {
+        if (!Number.isFinite(average)) {
+            return '<span class="badge text-bg-secondary">—</span>';
+        }
+        return `<span class="badge ${badgeClass(average)}">${average.toFixed(2)}</span>`;
+    }
+
+    function sortStudents(items) {
+        const mode = sortEl.value;
+        const copy = [...items];
+
+        if (mode === 'name_asc') {
+            copy.sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+        } else if (mode === 'name_desc') {
+            copy.sort((a, b) => b.name.localeCompare(a.name, 'ru'));
+        } else if (mode === 'avg_asc') {
+            copy.sort((a, b) => (a.averageGrade ?? Infinity) - (b.averageGrade ?? Infinity));
+        } else {
+            copy.sort((a, b) => (b.averageGrade ?? -Infinity) - (a.averageGrade ?? -Infinity));
+        }
+        return copy;
+    }
+
+    async function changeStudentVisibility(name, hidden) {
+        await postJson('/api/student-visibility', {name, hidden});
+        const target = allStudents.find((s) => s.name === name);
+        if (target) target.hidden = hidden;
+
+        if (hidden && !showHidden && activeStudent === name) {
+            activeStudent = '';
+            titleEl.textContent = 'Выберите ученика';
+            setStats(['Выберите ученика для просмотра отчета']);
+            bodyEl.innerHTML = '<tr><td colspan="7" class="text-secondary p-3">Выберите ученика слева</td></tr>';
+        }
+
+        renderStudents(filteredStudents(searchEl.value));
+        updateMeta();
+    }
+
+    const KEY_RISK_SUBJECTS = ['Алгебра', 'Геометрия', 'Информатика'];
+
+    function renderStudents(items) {
+        studentsEl.innerHTML = '';
+        for (const item of sortStudents(items)) {
+            const yearSubjects = Array.isArray(item.yearRiskSubjects) ? item.yearRiskSubjects : [];
+            const hasKeyRisk = yearSubjects.some((s) => KEY_RISK_SUBJECTS.includes(s));
+            const btn = document.createElement('button');
+            btn.className = 'student-btn'
+                + (item.name === activeStudent ? ' active' : '')
+                + (hasKeyRisk ? ' year-risk-key' : '');
+            btn.onclick = () => loadStudent(item.name);
+
+            const currentSubjects = Array.isArray(item.currentTrimesterRiskSubjects)
+                ? item.currentTrimesterRiskSubjects
+                : [];
+
+            const currentTitle = currentSubjects.length
+                ? `Риск тройки в ${currentTrimesterLabel}: ${currentSubjects.join(', ')}`
+                : `Риск тройки в ${currentTrimesterLabel}`;
+            const yearTitle = yearSubjects.length
+                ? `Риск годовой тройки: ${yearSubjects.join(', ')}`
+                : 'Риск годовой тройки';
+
+            const warnCurrent = item.warningCurrentTrimester
+                ? `<span class="badge rounded-pill text-bg-warning" title="${escapeHtml(currentTitle)}">!</span>`
+                : '';
+            const warnYear = item.warningYear
+                ? `<span class="badge rounded-pill text-bg-danger" title="${escapeHtml(yearTitle)}">!</span>`
+                : '';
+            const hideLabel = item.hidden ? 'Показать в общем списке' : 'Спрятать из общего списка';
+            const hideBtnClass = item.hidden ? 'btn-outline-success' : 'btn-outline-secondary';
+            const hiddenBadge = item.hidden ? '<span class="badge text-bg-secondary">Скрыт</span>' : '';
+            const hideIcon = item.hidden
+                ? '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M13.359 11.238C14.06 10.445 14.596 9.48 15 8c-1.5-5-6-6-7-6-1.02 0-2.952.523-4.615 2.146l.708.708C5.53 3.61 7.145 3 8 3c.88 0 4.07.502 5.5 5a6.84 6.84 0 0 1-.86 1.89l.719.719z"/><path d="M11.297 9.883l-.718-.718a2.5 2.5 0 0 0-3.744-3.31l-.718-.718A3.5 3.5 0 0 1 11.297 9.883zM3.28 5.012A6.85 6.85 0 0 0 2.5 8c1.43 4.498 4.62 5 5.5 5 .696 0 1.842-.404 2.949-1.247l.725.725C10.373 13.47 8.91 14 8 14c-1 0-5.5-1-7-6 .43-1.58 1.003-2.713 1.592-3.514l.688.526z"/><path d="M13.646 14.354a.5.5 0 0 1-.707 0l-11-11a.5.5 0 1 1 .707-.708l11 11a.5.5 0 0 1 0 .708z"/></svg>'
+                : '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" fill="currentColor" viewBox="0 0 16 16" aria-hidden="true"><path d="M16 8s-3-5.5-8-5.5S0 8 0 8s3 5.5 8 5.5S16 8 16 8zM1.173 8a13.133 13.133 0 0 1 1.66-2.043C4.12 4.668 5.88 3.5 8 3.5s3.879 1.168 5.168 2.457A13.133 13.133 0 0 1 14.828 8a13.133 13.133 0 0 1-1.66 2.043C11.879 11.332 10.12 12.5 8 12.5s-3.879-1.168-5.168-2.457A13.133 13.133 0 0 1 1.172 8z"/><path d="M8 5a3 3 0 1 0 0 6 3 3 0 0 0 0-6z"/></svg>';
+
+            const studentTrend = item.averageTrend === 'up'
+                ? '<span style="color:#198754" title="Успеваемость растёт по большинству предметов">▲</span> '
+                : item.averageTrend === 'down'
+                ? '<span style="color:#dc3545" title="Успеваемость падает по большинству предметов">▼</span> '
+                : '';
+
+            btn.innerHTML = `
+          <div class="student-line">
+            <span class="student-name">${studentTrend}${escapeHtml(item.name)}</span>
+            <span class="d-inline-flex align-items-center gap-1">
+              ${hiddenBadge}
+              ${avgBadge(item.averageGrade)}
+              ${warnCurrent}
+              ${warnYear}
+              <button class="btn btn-sm ${hideBtnClass} py-0 px-2 js-hide-btn" title="${hideLabel}" aria-label="${hideLabel}">${hideIcon}</button>
+            </span>
+          </div>
+        `;
+            const hideBtn = btn.querySelector('.js-hide-btn');
+            if (hideBtn) {
+                hideBtn.addEventListener('click', async (ev) => {
+                    ev.preventDefault();
+                    ev.stopPropagation();
+                    try {
+                        await changeStudentVisibility(item.name, !item.hidden);
+                    } catch (err) {
+                        alert('Не удалось сохранить: ' + err.message);
+                    }
+                });
+            }
+            studentsEl.appendChild(btn);
+        }
+
+        if (!items.length) {
+            const div = document.createElement('div');
+            div.className = 'text-secondary small p-2';
+            div.textContent = 'Ничего не найдено';
+            studentsEl.appendChild(div);
+        }
+    }
+
+    function setStats(chips) {
+        statsEl.innerHTML = '';
+        for (const ch of chips) {
+            const el = document.createElement('span');
+            el.className = 'stats-chip';
+            el.textContent = ch;
+            statsEl.appendChild(el);
+        }
+    }
+
+    function trimesterMarksHtml(trimesterBlock) {
+        const badges = (trimesterBlock.marks || [])
+            .map((m) => (
+                `<span class="badge rounded-pill ${badgeClass(m.mark)} mark-badge me-1 mb-1" ` +
+                `data-bs-toggle="tooltip" data-bs-title="${escapeHtml(m.tooltip)}">` +
+                `${escapeHtml(m.mark)}</span>`
+            ))
+            .join('');
+
+        return (
+            `<div class="mb-2">` +
+            `<div class="month-title">${escapeHtml(trimesterBlock.trimester)}</div>` +
+            `<div>${badges || '<span class="text-secondary small">—</span>'}</div>` +
+            `</div>`
+        );
+    }
+
+    function formatAvg(v) {
+        return Number.isFinite(v) ? v.toFixed(2) : '—';
+    }
+
+    function formatAvgBadge(v) {
+        if (!Number.isFinite(v)) return '<span class="badge text-bg-secondary">—</span>';
+        return `<span class="badge ${badgeClass(v)}">${v.toFixed(2)}</span>`;
+    }
+
+    function formatTrimesterBadge(v) {
+        if (!Number.isFinite(v)) return '<span class="badge text-bg-secondary">—</span>';
+        return `<span class="badge ${badgeClass(v)}">${Math.round(v)}</span>`;
+    }
+
+    function rowClassByYearAvg(v) {
+        if (!Number.isFinite(v)) return '';
+        if (v < 5) return 'table-danger';
+        if (v < 7) return 'table-warning';
+        return '';
+    }
+
+    function renderMarks(rows) {
+        bodyEl.innerHTML = '';
+        if (!rows.length) {
+            bodyEl.innerHTML = '<tr><td colspan="7" class="text-secondary p-3">Нет отметок</td></tr>';
+            return;
+        }
+
+        for (const r of rows) {
+            const tr = document.createElement('tr');
+            tr.className = rowClassByYearAvg(r.averageGrade);
+
+            const t1 = r.trimesterRounded?.[trimesterLabels[0]];
+            const t2 = r.trimesterRounded?.[trimesterLabels[1]];
+            const t3 = r.trimesterRounded?.[trimesterLabels[2]];
+            const marksByTrimesterHtml = (r.marksByTrimester || []).map(trimesterMarksHtml).join('');
+
+            const trendIcon = r.trend === 'up'
+              ? `<span style="color:#198754" title="Рост: последние ${escapeHtml(String(r.trendDiff))} б. за ${TREND_WINDOW} отметок">▲</span> `
+              : r.trend === 'down'
+              ? `<span style="color:#dc3545" title="Падение: ${escapeHtml(String(r.trendDiff))} б. за ${TREND_WINDOW} отметок">▼</span> `
+              : '';
+          tr.innerHTML = `
+          <td>${trendIcon}${escapeHtml(r.subject || '')}</td>
+          <td class="avg-col">${formatTrimesterBadge(t1)}</td>
+          <td class="avg-col">${formatTrimesterBadge(t2)}</td>
+          <td class="avg-col">${formatTrimesterBadge(t3)}</td>
+          <td class="annual-col"><strong>${formatAvgBadge(r.averageGrade)}</strong></td>
+          <td class="abs-col">${r.absencesCount ?? ''}</td>
+          <td class="marks-cell">${marksByTrimesterHtml || '<span class="text-secondary small">—</span>'}</td>
+        `;
+            bodyEl.appendChild(tr);
+        }
+
+        if (window.bootstrap) {
+            const tooltipNodes = bodyEl.querySelectorAll('[data-bs-toggle="tooltip"]');
+            tooltipNodes.forEach((el) => new window.bootstrap.Tooltip(el));
+        }
+    }
+
+    async function loadStudent(name) {
+        activeStudent = name;
+        renderStudents(filteredStudents(searchEl.value));
+        titleEl.textContent = name;
+        bodyEl.innerHTML = '<tr><td colspan="7" class="text-secondary p-3">Загрузка...</td></tr>';
+
+        const data = await getJson('/api/student/' + encodeURIComponent(name));
+        const absences = data.subjectRows.reduce((acc, s) => acc + Number(s.absencesCount || 0), 0);
+
+        setStats([
+            `Всего записей: ${data.totalMarks}`,
+            `Предметов: ${data.subjectsCount}`,
+            `Пропусков (н): ${absences}`,
+            `Актуальный период: ${data.currentTrimesterLabel}`
+        ]);
+        renderMarks(data.subjectRows || []);
+    }
+
+    function filteredStudents(q) {
+        const needle = String(q || '').trim().toLowerCase();
+        return allStudents.filter((s) => {
+            if (!showHidden && s.hidden) return false;
+            if (!needle) return true;
+            return s.name.toLowerCase().includes(needle);
+        });
+    }
+
+    function updateMeta() {
+        const hiddenCount = allStudents.filter((s) => s.hidden).length;
+        const visibleCount = allStudents.length - hiddenCount;
+        const shownCount = filteredStudents(searchEl.value).length;
+        metaEl.textContent = `Учеников: ${visibleCount}/${allStudents.length}, скрыто: ${hiddenCount}, показано: ${shownCount}, файлов: ${filesCount}`;
+    }
+
+    function updateSidebarUI() {
+        if (!appShellEl || !toggleSidebarEl) return;
+        appShellEl.classList.toggle('sidebar-collapsed', sidebarCollapsed);
+        toggleSidebarEl.textContent = sidebarCollapsed ? 'Показать список' : 'Скрыть список';
+        toggleSidebarEl.setAttribute(
+            'aria-label',
+            sidebarCollapsed ? 'Показать левую колонку с учениками' : 'Скрыть левую колонку с учениками'
+        );
+    }
+
+    async function init() {
+        sidebarCollapsed = localStorage.getItem('mesh_sidebar_collapsed') === '1';
+        updateSidebarUI();
+
+        const [meta, studentsData] = await Promise.all([
+            getJson('/api/meta'),
+            getJson('/api/students')
+        ]);
+
+        trimesterLabels = meta.trimesterLabels || trimesterLabels;
+        currentTrimesterLabel = meta.currentTrimesterLabel || currentTrimesterLabel;
+        thT1.textContent = '1';
+        thT2.textContent = '2';
+        thT3.textContent = '3';
+        thT1.title = trimesterLabels[0] || '1 триместр';
+        thT2.title = trimesterLabels[1] || '2 триместр';
+        thT3.title = trimesterLabels[2] || '3 триместр';
+
+        filesCount = Number(meta.filesCount || 0);
+        TREND_WINDOW = Number(meta.trendWindow || 10);
+        allStudents = studentsData.students || [];
+        renderStudents(filteredStudents(''));
+        updateMeta();
+        setStats(['Выберите ученика для просмотра отчета']);
+    }
+
+    searchEl.addEventListener('input', () => {
+        renderStudents(filteredStudents(searchEl.value));
+    });
+
+    sortEl.addEventListener('change', () => {
+        renderStudents(filteredStudents(searchEl.value));
+    });
+
+    showHiddenEl.addEventListener('change', () => {
+        showHidden = showHiddenEl.checked;
+        if (!showHidden && activeStudent) {
+            const selected = allStudents.find((s) => s.name === activeStudent);
+            if (selected && selected.hidden) {
+                activeStudent = '';
+                titleEl.textContent = 'Выберите ученика';
+                setStats(['Выберите ученика для просмотра отчета']);
+                bodyEl.innerHTML = '<tr><td colspan="7" class="text-secondary p-3">Выберите ученика слева</td></tr>';
+            }
+        }
+        renderStudents(filteredStudents(searchEl.value));
+        updateMeta();
+    });
+
+    toggleSidebarEl.addEventListener('click', () => {
+        sidebarCollapsed = !sidebarCollapsed;
+        localStorage.setItem('mesh_sidebar_collapsed', sidebarCollapsed ? '1' : '0');
+        updateSidebarUI();
+    });
+
+    init().catch((err) => {
+        metaEl.textContent = 'Ошибка загрузки';
+        bodyEl.innerHTML = `<tr><td colspan="7" class="text-danger p-3">${escapeHtml(err.message)}</td></tr>`;
+    });
+</script>
+</body>
+</html>

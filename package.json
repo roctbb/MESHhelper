@@ -1,0 +1,21 @@
+{
+  "name": "mesh-playwright-stats",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Playwright tool to collect MESH subject stats and group by students",
+  "main": "web-service.js",
+  "scripts": {
+    "start": "node web-service.js",
+    "dev": "node --watch web-service.js",
+    "trace": "node tools/trace-api.js",
+    "download": "node tools/download-reports.js",
+    "parse": "node tools/parse-reports.js",
+    "web": "node web-service.js",
+    "check": "node --check web-service.js && node --check tools/download-reports.js && node --check tools/parse-reports.js && node --check tools/trace-api.js"
+  },
+  "dependencies": {
+    "dotenv": "^16.6.1",
+    "playwright": "^1.54.1",
+    "xlsx": "^0.18.5"
+  }
+}
