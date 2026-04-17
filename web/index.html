@@ -138,13 +138,28 @@
             gap: 8px;
         }
 
-        .student-name {
-            flex: 1;
-            min-width: 0;
-            white-space: nowrap;
-            overflow: hidden;
-            text-overflow: ellipsis;
-        }
+    .student-name {
+      flex: 1;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .hide-btn {
+      width: 20px;
+      height: 20px;
+      min-width: 20px;
+      padding: 0;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      border-radius: 6px;
+      line-height: 1;
+    }
+    .hide-btn svg {
+      width: 11px;
+      height: 11px;
+    }
 
         .side-title {
             font-weight: 800;
@@ -184,13 +199,16 @@
             text-transform: capitalize;
         }
 
-        .mark-badge {
-            cursor: default;
-            font-weight: 600;
-            min-width: 28px;
-            text-align: center;
-            box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.09);
-        }
+    .mark-badge {
+      cursor: default;
+      font-weight: 600;
+      min-width: 28px;
+      text-align: center;
+      box-shadow: inset 0 -1px 0 rgba(0, 0, 0, 0.09);
+    }
+    .trimester-final {
+      box-shadow: 0 0 0 2px rgba(18, 30, 46, 0.85);
+    }
 
         .table {
             --bs-table-bg: transparent;
@@ -235,6 +253,44 @@
         .marks-cell {
             min-width: 340px;
         }
+        .problem-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+            gap: 10px;
+        }
+        .problem-card {
+            border: 1px solid #f0d9b0;
+            border-radius: 12px;
+            background: linear-gradient(180deg, #fff9ed, #fffdf8);
+            padding: 10px 11px;
+            box-shadow: 0 4px 12px rgba(98, 70, 20, 0.06);
+            cursor: pointer;
+            text-align: left;
+            transition: transform 0.14s ease, box-shadow 0.14s ease;
+        }
+        .problem-card:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 8px 18px rgba(98, 70, 20, 0.11);
+        }
+        .problem-card.high {
+            border-color: #f0b4b4;
+            background: linear-gradient(180deg, #fff2f2, #fffafb);
+        }
+        .problem-title {
+            font-size: 13px;
+            font-weight: 800;
+            margin-bottom: 4px;
+            color: #2a3548;
+        }
+        .problem-comment {
+            font-size: 12px;
+            color: #5f4e2f;
+            margin-bottom: 0;
+            line-height: 1.35;
+        }
+        .problem-card.high .problem-comment {
+            color: #6a2f2f;
+        }
 
         th.avg-col,
         td.avg-col {
@@ -275,7 +331,7 @@
     </style>
 </head>
 <body>
-<div class="container-fluid p-3 app-shell">
+<div id="app" class="container-fluid p-3 app-shell">
     <section class="panel hero-panel p-3 p-lg-4 mb-3">
         <div class="d-flex flex-wrap justify-content-between align-items-center gap-3">
             <div>
@@ -316,34 +372,96 @@
 
         <div class="col-lg-8 col-xl-9 main-col">
             <section class="panel p-3 h-100 d-flex flex-column">
-                <h2 class="h5 mb-3 side-title" id="studentTitle">Выберите ученика</h2>
-                <div class="d-flex flex-wrap gap-2 mb-3" id="stats"></div>
-                <div class="table-wrap">
-                    <table class="table table-sm align-middle mb-0">
-                        <thead class="table-light position-sticky top-0">
-                        <tr>
-                            <th>Предмет</th>
-                            <th id="th-t1" class="avg-col" title="1 триместр">1</th>
-                            <th id="th-t2" class="avg-col" title="2 триместр">2</th>
-                            <th id="th-t3" class="avg-col" title="3 триместр">3</th>
-                  <th class="annual-col" title="Годовая">Г</th>
-                  <th class="abs-col" title="Пропуски">Н</th>
-                            <th>Отметки по триместрам</th>
-                        </tr>
-                        </thead>
-                        <tbody id="marksBody">
-                        <tr>
-                            <td colspan="7" class="text-secondary p-3">Выберите ученика слева</td>
-                        </tr>
-                        </tbody>
-                    </table>
+                <div class="d-flex flex-wrap justify-content-between align-items-center gap-2 mb-3">
+                    <h2 class="h5 mb-0 side-title" id="studentTitle">Выберите ученика</h2>
+                    <div class="btn-group btn-group-sm" role="group" aria-label="Режим">
+                        <button type="button" id="modeAnalyticsBtn" class="btn btn-primary">Аналитика</button>
+                        <button type="button" id="modeMarkingBtn" class="btn btn-outline-primary">Проставить отметки</button>
+                    </div>
+                </div>
+
+                <div id="analyticsPanel">
+                    <div id="problemSection" class="mb-3">
+                        <div class="d-flex justify-content-between align-items-center mb-2">
+                            <h3 class="h6 side-title mb-0">Проблемные ученики</h3>
+                            <span class="small meta-text" id="problemMeta">Загрузка...</span>
+                        </div>
+                        <div id="problemCards" class="problem-grid"></div>
+                    </div>
+                    <div class="d-flex flex-wrap gap-2 mb-3" id="stats"></div>
+                    <div class="table-wrap">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead class="table-light position-sticky top-0">
+                            <tr>
+                                <th>Предмет</th>
+                                <th id="th-t1" class="avg-col" title="1 триместр">1</th>
+                                <th id="th-t2" class="avg-col" title="2 триместр">2</th>
+                                <th id="th-t3" class="avg-col" title="3 триместр">3</th>
+                      <th class="annual-col" title="Годовая">Г</th>
+                      <th class="abs-col" title="Пропуски">Н</th>
+                                <th>Отметки по триместрам</th>
+                            </tr>
+                            </thead>
+                            <tbody id="marksBody">
+                            <tr>
+                                <td colspan="7" class="text-secondary p-3">Выберите ученика слева</td>
+                            </tr>
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+
+                <div id="markingPanel" style="display:none">
+                    <div class="row g-3">
+                        <div class="col-12 col-lg-6">
+                            <label class="form-label">Группа</label>
+                            <select id="markingGroup" class="form-select form-select-sm"></select>
+                        </div>
+                        <div class="col-12 col-lg-6">
+                            <label class="form-label">Комментарий (общий)</label>
+                            <input id="markingComment" class="form-control form-control-sm" placeholder="Комментарий к отметке"/>
+                        </div>
+                        <div class="col-12 col-lg-6">
+                            <label class="form-label">Фамилия Имя (по строкам)</label>
+                            <textarea id="markingNames" class="form-control form-control-sm" rows="10" placeholder="Иванов Иван"></textarea>
+                        </div>
+                        <div class="col-12 col-lg-6">
+                            <label class="form-label">Отметки (1-10, пусто = пропуск)</label>
+                            <textarea id="markingGrades" class="form-control form-control-sm" rows="10" placeholder="10"></textarea>
+                        </div>
+                        <div class="col-12 d-flex gap-2">
+                            <button id="markingPreviewBtn" class="btn btn-sm btn-primary">Предпросмотр</button>
+                            <button id="markingApplyBtn" class="btn btn-sm btn-success" disabled>Применить</button>
+                            <span id="markingStatus" class="small meta-text align-self-center"></span>
+                        </div>
+                    </div>
+                    <div class="table-wrap mt-3">
+                        <table class="table table-sm align-middle mb-0">
+                            <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>Ввод</th>
+                                <th>Ученик</th>
+                                <th>Оц.</th>
+                                <th>Статус</th>
+                                <th>Комментарий</th>
+                            </tr>
+                            </thead>
+                            <tbody id="markingPreviewBody">
+                            <tr><td colspan="6" class="text-secondary p-3">Сделайте предпросмотр</td></tr>
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </section>
         </div>
     </div>
 </div>
+<div id="routerHost" style="display:none"></div>
 
 <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script src="https://unpkg.com/vue-router@4/dist/vue-router.global.prod.js"></script>
 <script>
     const studentsEl = document.getElementById('students');
     const searchEl = document.getElementById('search');
@@ -356,8 +474,34 @@
     const thT1 = document.getElementById('th-t1');
     const thT2 = document.getElementById('th-t2');
     const thT3 = document.getElementById('th-t3');
+    const problemSectionEl = document.getElementById('problemSection');
+    const problemCardsEl = document.getElementById('problemCards');
+    const problemMetaEl = document.getElementById('problemMeta');
     const appShellEl = document.querySelector('.app-shell');
     const toggleSidebarEl = document.getElementById('toggleSidebar');
+    const analyticsPanelEl = document.getElementById('analyticsPanel');
+    const markingPanelEl = document.getElementById('markingPanel');
+    const modeAnalyticsBtn = document.getElementById('modeAnalyticsBtn');
+    const modeMarkingBtn = document.getElementById('modeMarkingBtn');
+    const markingGroupEl = document.getElementById('markingGroup');
+    const markingCommentEl = document.getElementById('markingComment');
+    const markingNamesEl = document.getElementById('markingNames');
+    const markingGradesEl = document.getElementById('markingGrades');
+    const markingPreviewBtn = document.getElementById('markingPreviewBtn');
+    const markingApplyBtn = document.getElementById('markingApplyBtn');
+    const markingStatusEl = document.getElementById('markingStatus');
+    const markingPreviewBodyEl = document.getElementById('markingPreviewBody');
+    const { createApp } = Vue;
+    const { createRouter, createWebHashHistory } = VueRouter;
+    const RouteStub = { template: '<div></div>' };
+    const routes = [
+        { path: '/', name: 'home', component: RouteStub },
+        { path: '/student/:name', name: 'student', component: RouteStub }
+    ];
+    const router = createRouter({
+        history: createWebHashHistory(),
+        routes
+    });
 
     let allStudents = [];
     let activeStudent = '';
@@ -367,10 +511,21 @@
     let filesCount = 0;
     let TREND_WINDOW = 10;
     let sidebarCollapsed = false;
+    let currentMode = 'analytics';
+    let markingGroups = [];
+    let currentPreview = null;
 
     async function getJson(url) {
         const res = await fetch(url);
-        if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+        if (!res.ok) {
+            let message = `${res.status} ${res.statusText}`;
+            try {
+                const data = await res.json();
+                if (data && data.error) message = data.error;
+            } catch (_) {
+            }
+            throw new Error(message);
+        }
         return res.json();
     }
 
@@ -440,14 +595,25 @@
         if (target) target.hidden = hidden;
 
         if (hidden && !showHidden && activeStudent === name) {
-            activeStudent = '';
-            titleEl.textContent = 'Выберите ученика';
-            setStats(['Выберите ученика для просмотра отчета']);
-            bodyEl.innerHTML = '<tr><td colspan="7" class="text-secondary p-3">Выберите ученика слева</td></tr>';
+            await router.push({name: 'home'});
         }
 
         renderStudents(filteredStudents(searchEl.value));
         updateMeta();
+        renderProblemCards();
+    }
+
+    function openStudentRoute(name) {
+        if (!name) return;
+        router.push({name: 'student', params: {name}}).catch(() => {});
+    }
+
+    function clearSelectionView() {
+        activeStudent = '';
+        titleEl.textContent = 'Выберите ученика';
+        setStats(['Выберите ученика для просмотра отчета']);
+        bodyEl.innerHTML = '<tr><td colspan="7" class="text-secondary p-3">Выберите ученика слева</td></tr>';
+        updateProblemSectionVisibility();
     }
 
     const KEY_RISK_SUBJECTS = ['Алгебра', 'Геометрия', 'Информатика'];
@@ -461,7 +627,7 @@
             btn.className = 'student-btn'
                 + (item.name === activeStudent ? ' active' : '')
                 + (hasKeyRisk ? ' year-risk-key' : '');
-            btn.onclick = () => loadStudent(item.name);
+            btn.onclick = () => openStudentRoute(item.name);
 
             const currentSubjects = Array.isArray(item.currentTrimesterRiskSubjects)
                 ? item.currentTrimesterRiskSubjects
@@ -501,7 +667,7 @@
               ${avgBadge(item.averageGrade)}
               ${warnCurrent}
               ${warnYear}
-              <button class="btn btn-sm ${hideBtnClass} py-0 px-2 js-hide-btn" title="${hideLabel}" aria-label="${hideLabel}">${hideIcon}</button>
+              <button class="btn btn-sm ${hideBtnClass} hide-btn js-hide-btn" title="${hideLabel}" aria-label="${hideLabel}">${hideIcon}</button>
             </span>
           </div>
         `;
@@ -538,12 +704,79 @@
         }
     }
 
+    function buildProblemComment(student) {
+        const reasons = [];
+        if (student.warningYear) {
+            const subjects = Array.isArray(student.yearRiskSubjects) ? student.yearRiskSubjects : [];
+            reasons.push(subjects.length
+                ? `Годовой риск: ${subjects.slice(0, 3).join(', ')}${subjects.length > 3 ? '…' : ''}`
+                : 'Риск годовой тройки');
+        }
+        if (student.warningCurrentTrimester) {
+            const subjects = Array.isArray(student.currentTrimesterRiskSubjects) ? student.currentTrimesterRiskSubjects : [];
+            reasons.push(subjects.length
+                ? `В ${currentTrimesterLabel}: ${subjects.slice(0, 3).join(', ')}${subjects.length > 3 ? '…' : ''}`
+                : `Риск в ${currentTrimesterLabel}`);
+        }
+        if (Number.isFinite(student.averageGrade) && student.averageGrade < 7) {
+            reasons.push(`Средний балл ${student.averageGrade.toFixed(2)}`);
+        }
+        if (student.averageTrend === 'down') reasons.push('Тренд по предметам снижается');
+        return reasons.join(' • ') || 'Требует внимания';
+    }
+
+    function getProblemStudents() {
+        const pool = allStudents.filter((s) => showHidden || !s.hidden);
+        return pool
+            .filter((s) => s.warningYear || s.warningCurrentTrimester || s.averageTrend === 'down' || (Number.isFinite(s.averageGrade) && s.averageGrade < 7))
+            .sort((a, b) => {
+                const aw = (a.warningYear ? 2 : 0) + (a.warningCurrentTrimester ? 1 : 0);
+                const bw = (b.warningYear ? 2 : 0) + (b.warningCurrentTrimester ? 1 : 0);
+                if (bw !== aw) return bw - aw;
+                return (a.averageGrade ?? 99) - (b.averageGrade ?? 99);
+            })
+            .slice(0, 12);
+    }
+
+    function renderProblemCards() {
+        if (!problemCardsEl || !problemMetaEl) return;
+        const items = getProblemStudents();
+        problemCardsEl.innerHTML = '';
+
+        if (!items.length) {
+            problemMetaEl.textContent = 'Нет активных рисков';
+            problemCardsEl.innerHTML = '<div class="text-secondary small">Сейчас проблемных учеников не найдено.</div>';
+            return;
+        }
+
+        problemMetaEl.textContent = `Найдено: ${items.length}`;
+        for (const s of items) {
+            const card = document.createElement('button');
+            card.type = 'button';
+            card.className = `problem-card${s.warningYear ? ' high' : ''}`;
+            card.addEventListener('click', () => openStudentRoute(s.name));
+            card.innerHTML = `
+                <div class="d-flex justify-content-between align-items-start gap-2">
+                    <div class="problem-title">${escapeHtml(s.name)}</div>
+                    ${avgBadge(s.averageGrade)}
+                </div>
+                <p class="problem-comment">${escapeHtml(buildProblemComment(s))}</p>
+            `;
+            problemCardsEl.appendChild(card);
+        }
+    }
+
+    function updateProblemSectionVisibility() {
+        if (!problemSectionEl) return;
+        problemSectionEl.style.display = activeStudent ? 'none' : '';
+    }
+
     function trimesterMarksHtml(trimesterBlock) {
         const badges = (trimesterBlock.marks || [])
             .map((m) => (
                 `<span class="badge rounded-pill ${badgeClass(m.mark)} mark-badge me-1 mb-1" ` +
                 `data-bs-toggle="tooltip" data-bs-title="${escapeHtml(m.tooltip)}">` +
-                `${escapeHtml(m.mark)}</span>`
+                `${escapeHtml(m.mark)}${Number(m.weight) > 1 ? `<span class="ms-1">×${escapeHtml(String(m.weight))}</span>` : ''}</span>`
             ))
             .join('');
 
@@ -564,9 +797,10 @@
         return `<span class="badge ${badgeClass(v)}">${v.toFixed(2)}</span>`;
     }
 
-    function formatTrimesterBadge(v) {
-        if (!Number.isFinite(v)) return '<span class="badge text-bg-secondary">—</span>';
-        return `<span class="badge ${badgeClass(v)}">${Math.round(v)}</span>`;
+    function formatTrimesterBadge(v, isFinal) {
+      if (!Number.isFinite(v)) return '<span class="badge text-bg-secondary">—</span>';
+      const outline = isFinal ? ' trimester-final' : '';
+      return `<span class="badge ${badgeClass(v)}${outline}">${Math.round(v)}</span>`;
     }
 
     function rowClassByYearAvg(v) {
@@ -590,6 +824,9 @@
             const t1 = r.trimesterRounded?.[trimesterLabels[0]];
             const t2 = r.trimesterRounded?.[trimesterLabels[1]];
             const t3 = r.trimesterRounded?.[trimesterLabels[2]];
+            const s1 = r.trimesterSource?.[trimesterLabels[0]] === 'final';
+            const s2 = r.trimesterSource?.[trimesterLabels[1]] === 'final';
+            const s3 = r.trimesterSource?.[trimesterLabels[2]] === 'final';
             const marksByTrimesterHtml = (r.marksByTrimester || []).map(trimesterMarksHtml).join('');
 
             const trendIcon = r.trend === 'up'
@@ -599,9 +836,9 @@
               : '';
           tr.innerHTML = `
           <td>${trendIcon}${escapeHtml(r.subject || '')}</td>
-          <td class="avg-col">${formatTrimesterBadge(t1)}</td>
-          <td class="avg-col">${formatTrimesterBadge(t2)}</td>
-          <td class="avg-col">${formatTrimesterBadge(t3)}</td>
+          <td class="avg-col">${formatTrimesterBadge(t1, s1)}</td>
+          <td class="avg-col">${formatTrimesterBadge(t2, s2)}</td>
+          <td class="avg-col">${formatTrimesterBadge(t3, s3)}</td>
           <td class="annual-col"><strong>${formatAvgBadge(r.averageGrade)}</strong></td>
           <td class="abs-col">${r.absencesCount ?? ''}</td>
           <td class="marks-cell">${marksByTrimesterHtml || '<span class="text-secondary small">—</span>'}</td>
@@ -617,6 +854,7 @@
 
     async function loadStudent(name) {
         activeStudent = name;
+        updateProblemSectionVisibility();
         renderStudents(filteredStudents(searchEl.value));
         titleEl.textContent = name;
         bodyEl.innerHTML = '<tr><td colspan="7" class="text-secondary p-3">Загрузка...</td></tr>';
@@ -631,6 +869,27 @@
             `Актуальный период: ${data.currentTrimesterLabel}`
         ]);
         renderMarks(data.subjectRows || []);
+    }
+
+    async function syncFromRoute(routeObj) {
+        const routeName = routeObj?.name || 'home';
+        if (routeName !== 'student') {
+            clearSelectionView();
+            renderStudents(filteredStudents(searchEl.value));
+            renderProblemCards();
+            return;
+        }
+        const studentName = String(routeObj.params?.name || '').trim();
+        if (!studentName) {
+            clearSelectionView();
+            return;
+        }
+        const exists = allStudents.some((s) => s.name === studentName);
+        if (!exists) {
+            clearSelectionView();
+            return;
+        }
+        await loadStudent(studentName);
     }
 
     function filteredStudents(q) {
@@ -659,6 +918,105 @@
         );
     }
 
+    function setMode(mode) {
+        currentMode = mode === 'marking' ? 'marking' : 'analytics';
+        const analytics = currentMode === 'analytics';
+        analyticsPanelEl.style.display = analytics ? '' : 'none';
+        markingPanelEl.style.display = analytics ? 'none' : '';
+        modeAnalyticsBtn.className = `btn btn-sm ${analytics ? 'btn-primary' : 'btn-outline-primary'}`;
+        modeMarkingBtn.className = `btn btn-sm ${analytics ? 'btn-outline-primary' : 'btn-primary'}`;
+        if (analytics) {
+            updateProblemSectionVisibility();
+        } else {
+            problemSectionEl.style.display = 'none';
+            titleEl.textContent = 'Проставить отметки';
+            setStats(['Выберите группу, вставьте ФИО/отметки и сделайте предпросмотр']);
+        }
+    }
+
+    function renderMarkingGroups() {
+        markingGroupEl.innerHTML = '';
+        if (!markingGroups.length) {
+            const opt = document.createElement('option');
+            opt.value = '';
+            opt.textContent = 'Нет групп';
+            markingGroupEl.appendChild(opt);
+            return;
+        }
+        for (const g of markingGroups) {
+            const opt = document.createElement('option');
+            opt.value = String(g.id);
+            opt.textContent = `${g.name} (${g.studentCount})`;
+            markingGroupEl.appendChild(opt);
+        }
+    }
+
+    function statusBadge(status) {
+      if (status === 'ready' || status === 'created') return 'text-bg-success';
+      if (status && status.startsWith('skip')) return 'text-bg-secondary';
+      return 'text-bg-danger';
+    }
+
+    function renderMarkingPreview(preview) {
+        markingPreviewBodyEl.innerHTML = '';
+        const rows = (preview && preview.rows) || [];
+        if (!rows.length) {
+            markingPreviewBodyEl.innerHTML = '<tr><td colspan="6" class="text-secondary p-3">Нет строк</td></tr>';
+            return;
+        }
+        for (const r of rows) {
+            const tr = document.createElement('tr');
+            tr.innerHTML = `
+              <td>${r.line ?? ''}</td>
+              <td>${escapeHtml(r.inputName || '')}</td>
+              <td>${escapeHtml(r.studentName || '—')}</td>
+              <td>${Number.isFinite(Number(r.grade)) ? Number(r.grade) : '—'}</td>
+              <td><span class="badge ${statusBadge(r.status)}">${escapeHtml(r.status || '')}</span></td>
+              <td>${escapeHtml(r.reason || '')}</td>
+            `;
+            markingPreviewBodyEl.appendChild(tr);
+        }
+    }
+
+    async function loadMarkingGroups() {
+        const data = await getJson('/api/marking/groups');
+        markingGroups = Array.isArray(data.groups) ? data.groups : [];
+        renderMarkingGroups();
+        if (data.source === 'cache' && data.warning) {
+            markingStatusEl.textContent = `Группы из кэша: ${data.warning}`;
+        } else if (data.source === 'live') {
+            markingStatusEl.textContent = '';
+        }
+    }
+
+    async function doMarkingPreview() {
+        const payload = {
+            groupId: Number(markingGroupEl.value),
+            comment: markingCommentEl.value || '',
+            namesText: markingNamesEl.value || '',
+            marksText: markingGradesEl.value || ''
+        };
+        markingStatusEl.textContent = 'Предпросмотр...';
+        const data = await postJson('/api/marking/preview', payload);
+        currentPreview = data.preview || null;
+        renderMarkingPreview(currentPreview);
+        const s = currentPreview?.summary || {};
+        markingStatusEl.textContent = `Готово: ${s.ready || 0}, пропуски: ${(s.skipNotInGroup || 0) + (s.skipEmpty || 0)}, ошибки: ${s.errors || 0}`;
+        markingApplyBtn.disabled = !currentPreview || Number(s.ready || 0) <= 0 || Number(s.errors || 0) > 0;
+    }
+
+    async function doMarkingApply() {
+        if (!currentPreview) return;
+        markingStatusEl.textContent = 'Применение...';
+        const data = await postJson('/api/marking/apply', { preview: currentPreview });
+        const s = data.summary || {};
+        markingStatusEl.textContent = `Создано: ${s.created || 0}, пропущено: ${s.skipped || 0}, ошибок: ${s.errors || 0}`;
+        const rows = Array.isArray(data.results) ? data.results : [];
+        currentPreview = { rows };
+        renderMarkingPreview(currentPreview);
+        markingApplyBtn.disabled = true;
+    }
+
     async function init() {
         sidebarCollapsed = localStorage.getItem('mesh_sidebar_collapsed') === '1';
         updateSidebarUI();
@@ -680,17 +1038,21 @@
         filesCount = Number(meta.filesCount || 0);
         TREND_WINDOW = Number(meta.trendWindow || 10);
         allStudents = studentsData.students || [];
+        updateProblemSectionVisibility();
         renderStudents(filteredStudents(''));
         updateMeta();
+        renderProblemCards();
         setStats(['Выберите ученика для просмотра отчета']);
     }
 
     searchEl.addEventListener('input', () => {
         renderStudents(filteredStudents(searchEl.value));
+        renderProblemCards();
     });
 
     sortEl.addEventListener('change', () => {
         renderStudents(filteredStudents(searchEl.value));
+        renderProblemCards();
     });
 
     showHiddenEl.addEventListener('change', () => {
@@ -698,14 +1060,12 @@
         if (!showHidden && activeStudent) {
             const selected = allStudents.find((s) => s.name === activeStudent);
             if (selected && selected.hidden) {
-                activeStudent = '';
-                titleEl.textContent = 'Выберите ученика';
-                setStats(['Выберите ученика для просмотра отчета']);
-                bodyEl.innerHTML = '<tr><td colspan="7" class="text-secondary p-3">Выберите ученика слева</td></tr>';
+                router.push({name: 'home'}).catch(() => {});
             }
         }
         renderStudents(filteredStudents(searchEl.value));
         updateMeta();
+        renderProblemCards();
     });
 
     toggleSidebarEl.addEventListener('click', () => {
@@ -714,7 +1074,48 @@
         updateSidebarUI();
     });
 
-    init().catch((err) => {
+    modeAnalyticsBtn.addEventListener('click', () => setMode('analytics'));
+    modeMarkingBtn.addEventListener('click', async () => {
+        setMode('marking');
+        if (!markingGroups.length) {
+            try {
+                await loadMarkingGroups();
+            } catch (err) {
+                markingStatusEl.textContent = `Ошибка загрузки групп: ${err.message}`;
+            }
+        }
+    });
+    markingPreviewBtn.addEventListener('click', async () => {
+        try {
+            await doMarkingPreview();
+        } catch (err) {
+            currentPreview = null;
+            markingApplyBtn.disabled = true;
+            markingStatusEl.textContent = `Ошибка: ${err.message}`;
+        }
+    });
+    markingApplyBtn.addEventListener('click', async () => {
+        try {
+            await doMarkingApply();
+        } catch (err) {
+            markingStatusEl.textContent = `Ошибка: ${err.message}`;
+        }
+    });
+
+    const vueApp = createApp({});
+    vueApp.use(router);
+    let routeReady = false;
+    router.afterEach((to) => {
+        if (!routeReady) return;
+        syncFromRoute(to).catch(() => {});
+    });
+    vueApp.mount('#routerHost');
+
+    init().then(() => {
+        setMode('analytics');
+        routeReady = true;
+        syncFromRoute(router.currentRoute.value).catch(() => {});
+    }).catch((err) => {
         metaEl.textContent = 'Ошибка загрузки';
         bodyEl.innerHTML = `<tr><td colspan="7" class="text-danger p-3">${escapeHtml(err.message)}</td></tr>`;
     });

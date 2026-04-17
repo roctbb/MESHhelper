@@ -9,9 +9,11 @@
     "dev": "node --watch web-service.js",
     "trace": "node tools/trace-api.js",
     "download": "node tools/download-reports.js",
-    "parse": "node tools/parse-reports.js",
+    "sync": "node tools/download-reports.js",
+    "parse": "node -e \"console.warn('parse is legacy for XLSX only; use npm run download for API mode')\" && node tools/parse-reports.js",
+    "parse:legacy": "node tools/parse-reports.js",
     "web": "node web-service.js",
-    "check": "node --check web-service.js && node --check tools/download-reports.js && node --check tools/parse-reports.js && node --check tools/trace-api.js"
+    "check": "node --check web-service.js && node --check tools/mesh-api.js && node --check tools/download-reports.js && node --check tools/parse-reports.js && node --check tools/trace-api.js"
   },
   "dependencies": {
     "dotenv": "^16.6.1",

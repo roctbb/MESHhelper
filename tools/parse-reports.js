@@ -17,6 +17,7 @@ function slugify(text) {
 function parseMarkValue(value) {
   const s = norm(value);
   if (!s) return null;
+  if (/^(см|нв)\.?$/i.test(s)) return null;
   if (/^н$/i.test(s)) return { type: 'absence', raw: s, num: null };
   const m = s.match(/^(\d+(?:[.,]\d+)?)([+-])?$/);
   if (!m) return { type: 'other', raw: s, num: null };
@@ -261,6 +262,7 @@ function parseWorkbook(filePath) {
               mark: parsed.raw,
               markType: parsed.type,
               numericMark: Number.isFinite(parsed.num) ? parsed.num : null,
+              weight: 1,
               sourceSheet: sheetName,
               sourceFile,
               columnIndex: c
@@ -295,6 +297,7 @@ function toCsv(rows) {
     'mark',
     'markType',
     'numericMark',
+    'weight',
     'sourceSheet',
     'sourceFile'
   ];
