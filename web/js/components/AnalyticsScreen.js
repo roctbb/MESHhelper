@@ -137,14 +137,49 @@ export class AnalyticsScreen {
 
   renderProblemCards() {
     if (this.state.analytics.selectedStudent) {
+      this.refs.debtBlock.style.display = 'none';
       this.refs.problemBlock.style.display = 'none';
       this.refs.trendBlock.style.display = 'none';
       this.refs.pointsBlock.style.display = 'none';
       return;
     }
+    this.refs.debtBlock.style.display = '';
     this.refs.problemBlock.style.display = '';
     this.refs.trendBlock.style.display = '';
     this.refs.pointsBlock.style.display = '';
+
+    const debtPool = [...this.state.analytics.studentCards]
+      .filter((s) => this.state.ui.showHiddenStudents || !this.isHidden(s.name))
+      .filter((s) => s.hasAcademicDebt)
+      .sort((a, b) => {
+        const ac = Array.isArray(a.academicDebtSubjects) ? a.academicDebtSubjects.length : 0;
+        const bc = Array.isArray(b.academicDebtSubjects) ? b.academicDebtSubjects.length : 0;
+        if (bc !== ac) return bc - ac;
+        return a.name.localeCompare(b.name, 'ru');
+      })
+      .slice(0, 12);
+
+    this.refs.debtGrid.innerHTML = '';
+    this.refs.debtMeta.textContent = debtPool.length ? `Найдено: ${debtPool.length}` : 'Не найдено';
+    if (!debtPool.length) {
+      this.refs.debtGrid.innerHTML = '<div class="small text-secondary">Учеников с академической задолженностью нет.</div>';
+    } else {
+      debtPool.forEach((s) => {
+        const card = document.createElement('button');
+        card.type = 'button';
+        card.className = 'problem-card high';
+        card.onclick = () => this.callbacks.openStudent(s.name);
+        const subj = (s.academicDebtSubjects || []).slice(0, 4).join(', ');
+        card.innerHTML = `
+          <div class="d-flex justify-content-between align-items-center gap-2 mb-1">
+            <div class="fw-bold small">${escapeHtml(s.name)}</div>
+            <span class="badge text-bg-danger">АКЗ</span>
+          </div>
+          <div class="small-muted">${escapeHtml(subj ? `Предметы: ${subj}` : 'Есть академическая задолженность')}</div>
+        `;
+        this.refs.debtGrid.appendChild(card);
+      });
+    }
 
     const pool = [...this.state.analytics.studentCards]
       .filter((s) => this.state.ui.showHiddenStudents || !this.isHidden(s.name))

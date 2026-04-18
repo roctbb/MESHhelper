@@ -265,6 +265,7 @@ export function buildSubjectRows(rows, trimesterLabels, trimesterBoundaries) {
         subject,
         marksCount: 0,
         pointsCount: 0,
+        academicDebt: false,
         absencesCount: 0,
         gradesCount: 0,
         gradesSum: 0,
@@ -279,6 +280,8 @@ export function buildSubjectRows(rows, trimesterLabels, trimesterBoundaries) {
 
     const mark = norm(row.mark);
     const isAbsence = /^н$/i.test(mark);
+    const isAcademicDebt = Boolean(row.academicDebt);
+    if (isAcademicDebt) item.academicDebt = true;
     const isFinalYear = row.markType === 'final_year' && Number.isFinite(Number(row.numericMark));
     const isFinalTrim = row.markType === 'final_trimester' && Number.isFinite(Number(row.numericMark));
     const finalLabel = canonicalTrimesterLabel(row.trimesterLabel || row.period, trimesterBoundaries);
@@ -412,6 +415,7 @@ export function buildSubjectRows(rows, trimesterLabels, trimesterBoundaries) {
       marksCount: s.marksCount,
       pointsCount: s.pointsCount,
       hasPoints: s.pointsCount > 0,
+      academicDebt: Boolean(s.academicDebt),
       gradesCount: s.gradesCount,
       absencesCount: s.absencesCount,
       averageGrade: annual,
@@ -478,6 +482,9 @@ export function buildStudentCard(name, rows, currentTrimester, trimesterLabels, 
     .filter((x) => Number(x.pointsCount || 0) > 0)
     .map((x) => x.subject);
   const pointsCount = subjectRows.reduce((sum, x) => sum + Number(x.pointsCount || 0), 0);
+  const academicDebtSubjects = subjectRows
+    .filter((x) => Boolean(x.academicDebt))
+    .map((x) => x.subject);
   const excellentAllSubjects = subjectRows.length > 0 && subjectRows.every((x) => (
     Number.isFinite(x.averageGrade) && Math.round(x.averageGrade) >= 9
   ));
@@ -494,6 +501,8 @@ export function buildStudentCard(name, rows, currentTrimester, trimesterLabels, 
     hasPoints: pointsCount > 0,
     pointsCount,
     pointSubjects,
+    hasAcademicDebt: academicDebtSubjects.length > 0,
+    academicDebtSubjects,
     excellentAllSubjects,
     warningCurrentTrimester: currentRiskSubjects.length > 0,
     warningYear: yearRiskSubjects.length > 0,
@@ -598,6 +607,7 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
         subjectId: group.subjectId,
         scheduleLessonId: Number(item.schedule_lesson_id) || null,
         isPoint: isPointActive,
+        academicDebt: false,
         comment: norm(item.comment),
         weight: Number.isFinite(Number(item.weight)) && Number(item.weight) > 0 ? Number(item.weight) : 1,
         date: ruDate,
@@ -646,6 +656,7 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
           subjectId: group.subjectId,
           scheduleLessonId,
           isPoint: false,
+          academicDebt: false,
           comment: '',
           weight: 1,
           date: ruDate,
@@ -699,6 +710,7 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
         subjectId,
         scheduleLessonId: null,
         isPoint: false,
+        academicDebt: Boolean(fm.academic_debt),
         comment: '',
         weight: 1,
         date: '',
