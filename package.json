@@ -1,23 +1,22 @@
 {
-  "name": "mesh-playwright-stats",
+  "name": "mesh-assistant",
   "version": "1.0.0",
   "private": true,
-  "description": "Playwright tool to collect MESH subject stats and group by students",
+  "description": "MESH web assistant: analytics and marks workflow via API proxy",
   "main": "web-service.js",
   "scripts": {
     "start": "node web-service.js",
-    "dev": "node --watch web-service.js",
-    "trace": "node tools/trace-api.js",
-    "download": "node tools/download-reports.js",
-    "sync": "node tools/download-reports.js",
-    "parse": "node -e \"console.warn('parse is legacy for XLSX only; use npm run download for API mode')\" && node tools/parse-reports.js",
-    "parse:legacy": "node tools/parse-reports.js",
-    "web": "node web-service.js",
-    "check": "node --check web-service.js && node --check tools/mesh-api.js && node --check tools/download-reports.js && node --check tools/parse-reports.js && node --check tools/trace-api.js"
+    "dev:api": "node --watch web-service.js",
+    "dev:web": "vite",
+    "dev": "node scripts/dev.js",
+    "build": "vite build",
+    "preview": "vite preview",
+    "check": "node --check web-service.js"
   },
   "dependencies": {
-    "dotenv": "^16.6.1",
-    "playwright": "^1.54.1",
-    "xlsx": "^0.18.5"
+    "dotenv": "^16.6.1"
+  },
+  "devDependencies": {
+    "vite": "^5.4.10"
   }
 }

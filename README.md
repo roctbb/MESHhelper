@@ -1,101 +1,63 @@
-# MESH Reports Toolkit
+# MESH Assistant
 
-Проект состоит из 3 основных частей:
-- `tools/download-reports.js` — основной API sync: получает отметки напрямую из МЭШ и сразу формирует аналитику.
-- `web-service.js` — веб-интерфейс просмотра аналитики по ученикам.
-- `tools/trace-api.js` — запись сетевого трейса (HAR/JSONL) для анализа API.
+Веб-приложение для двух задач:
+- аналитика по отметкам/рискам учеников;
+- массовая проставка отметок (через API учителя, с предпросмотром).
 
-Legacy:
-- `tools/parse-reports.js` — старый парсер XLSX (нужен только если есть уже скачанные xlsx-файлы).
+## Архитектура
 
-## Установка
-
-```bash
-npm install
-npx playwright install chromium
-```
-
-## Настройка
-
-1. Скопируйте `.env.example` в `.env`.
-2. Заполните обязательные поля:
-- `API_CLASS_UNIT_IDS`
-- `API_SCHOOL_ID`
-- `API_ACADEMIC_YEAR_ID`
-
-Для входа с 2FA рекомендуется:
-
-```bash
-MANUAL_LOGIN=true
-HEADLESS=false
-USE_PERSISTENT_PROFILE=true
-```
+- Фронтенд разбит на модули и компоненты (`web/js/*`).
+- Используется Vite для разработки и сборки.
+- Бэкенд (`web-service.js`) отвечает за:
+  - статику;
+  - `/api/config`;
+  - прокси `/api/mesh` -> `https://school.mos.ru/api/...`.
+- Авторизация хранится в браузере (`localStorage`): `token`, `profile_id` (+ role/host/aid).
 
 ## Запуск
 
-### 1) Синхронизировать данные из API
+### Продакшен-режим (без Vite)
 
 ```bash
-npm run download
-# или npm run sync
-```
-
-Скрипт сразу создает:
-- `output/analytics-latest.json`
-- `output/analytics-latest.csv`
-
-При каждом запуске хранятся только актуальные файлы:
-- `output/downloads-latest/*`
-- `output/analytics-latest.json`
-- `output/analytics-latest.csv`
-
-### 2) Поднять веб-интерфейс
-
-```bash
+npm install
 npm run start
 ```
 
-`npm run start` теперь делает:
-1. поднимает веб-сервис
-2. открывает API-сессию (по `BROWSER_PROFILE_DIR`)
-3. запускает API sync (`tools/download-reports.js`) для обновления `output/analytics-latest.*` через ту же сессию
+Открыть: [http://localhost:8787](http://localhost:8787)
 
-Если sync не удался, веб всё равно стартует на последних сохранённых данных.
+### Режим разработки (Vite + автообновление)
 
-Управление через `.env`:
-- `START_SYNC_ON_START=true|false` — включить/выключить авто-sync перед стартом.
-- `START_SYNC_STRICT=true|false` — при `true` не запускать веб, если sync завершился ошибкой.
-- `MARKING_PREOPEN_ON_START=true|false` — открывать API-сессию для режима проставления сразу при старте веба.
-
-Откройте:
-
-```text
-http://localhost:8787
-```
-
-В интерфейсе доступны два режима:
-- `Аналитика` — просмотр по ученикам/предметам.
-- `Проставить отметки` — массовая постановка через API учителя (с предпросмотром и подтверждением).
-
-Для режима проставления используется сессия из `BROWSER_PROFILE_DIR`, поэтому перед этим нужно хотя бы один раз пройти вход через:
-- `npm run download` (или `npm run trace`) с `MANUAL_LOGIN=true` и `USE_PERSISTENT_PROFILE=true`.
-
-## Выходные файлы
-
-После `download`:
-- `output/downloads-latest/marks-manifest.json`
-- `output/analytics-latest.json`
-- `output/analytics-latest.csv`
-
-## Legacy режим XLSX
-
-Если нужен старый режим через экспорт журналов в xlsx:
-1. В `.env` поставьте:
-```text
-DOWNLOAD_MODE=api_export
-```
-2. Выполните:
 ```bash
-npm run download
-npm run parse:legacy
+npm install
+npm run dev
 ```
+
+Открыть: [http://localhost:5173](http://localhost:5173)
+
+## Где взять token/profile_id
+
+1. Войти в [school.mos.ru](https://school.mos.ru).
+2. DevTools -> Application -> Local Storage -> `https://school.mos.ru`.
+3. Скопировать:
+   - `aupd_token` -> в поле `token`;
+   - `profile_id`.
+
+## Docker
+
+Сборка:
+
+```bash
+docker build -t mesh-assistant .
+```
+
+Запуск:
+
+```bash
+docker run --rm -p 8787:8787 mesh-assistant
+```
+
+## Источники данных
+
+- `Аналитика`: автоматически определяются доступные классы, есть выбор класса в UI.
+- Для совместимости можно задать `API_CLASS_UNIT_IDS` (через запятую), тогда аналитика фиксируется по этим классам.
+- `Проставить отметки`: группы учителя (`assigned_group_ids`).
