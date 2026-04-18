@@ -1,0 +1,12 @@
+services:
+  mesh-assistant:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mesh-assistant
+    ports:
+      - "8787:8787"
+    env_file:
+      - .env
+    restart: unless-stopped
+

@@ -56,6 +56,18 @@ docker build -t mesh-assistant .
 docker run --rm -p 8787:8787 mesh-assistant
 ```
 
+Или через Docker Compose:
+
+```bash
+docker compose up -d --build
+```
+
+Остановить:
+
+```bash
+docker compose down
+```
+
 ## Источники данных
 
 - `Аналитика`: автоматически определяются доступные классы, есть выбор класса в UI.
