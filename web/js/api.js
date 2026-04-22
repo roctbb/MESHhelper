@@ -6,7 +6,7 @@ export async function fetchJson(url, options) {
 }
 
 export function createApiClient({ getAuth, onAuthError }) {
-  async function meshApi(path, { method = 'GET', query = null, body = null, subsystem = 'journalsw' } = {}) {
+  async function meshApi(path, { method = 'GET', query = null, body = null, subsystem = 'journalw' } = {}) {
     const auth = getAuth();
     if (!auth) throw new Error('Не задана авторизация');
 

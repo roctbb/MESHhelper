@@ -72,6 +72,14 @@ function sanitizePath(rawPath) {
   return p;
 }
 
+function normalizeSubsystem(rawSubsystem) {
+  const value = String(rawSubsystem || '').trim().toLowerCase();
+  if (!value) return 'journalw';
+  // В старом коде была опечатка `journalsw`, из-за которой control_forms возвращал [].
+  if (value === 'journalsw') return 'journalw';
+  return value;
+}
+
 function buildProxyHeaders(auth, subsystem) {
   const token = String(auth?.token || '').trim();
   const profileId = String(auth?.profileId || '').trim();
@@ -91,7 +99,7 @@ function buildProxyHeaders(auth, subsystem) {
     'X-Mes-RoleId': roleId,
     'x-mes-hostid': hostId,
     aid,
-    'x-mes-subsystem': String(subsystem || process.env.API_SUBSYSTEM || 'journalsw')
+    'x-mes-subsystem': normalizeSubsystem(subsystem || process.env.API_SUBSYSTEM || 'journalw')
   };
 }
 
