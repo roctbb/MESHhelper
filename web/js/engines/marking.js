@@ -93,6 +93,30 @@ function pickControlForm(forms) {
   return best?.f || null;
 }
 
+function debugControlForms(label, forms) {
+  const list = Array.isArray(forms) ? forms : [];
+  const rows = list.map((f) => ({
+    id: Number(f?.id) || null,
+    name: norm(f?.name),
+    shortName: norm(f?.short_name),
+    deleted: Boolean(f?.deleted_at || f?.is_deleted),
+    gradeSystemId: Number(f?.grade_system?.id || f?.grade_system_id || f?.grade_system?.grade_system_id) || null,
+    gradeSystemName: norm(f?.grade_system?.name || f?.grade_system_name),
+    nmax: Number(
+      f?.grade_system?.nmax
+      || f?.grade_system?.max
+      || f?.grade_system?.max_value
+      || f?.grade_system?.value_max
+      || f?.grade_system_nmax
+      || f?.nmax
+    ) || null
+  }));
+  console.group(`[MESHhelper] ${label}: ${rows.length} forms`);
+  console.table(rows);
+  console.log('Raw control forms:', list);
+  console.groupEnd();
+}
+
 function findThemeIntegrationId(scheduleItem) {
   const didactic = Array.isArray(scheduleItem?.didactic_units) ? scheduleItem.didactic_units : [];
   const fromDidactic = didactic.map((x) => Number(x.theme_integration_id)).find(Number.isFinite);
@@ -224,6 +248,7 @@ export async function buildMarkingPreview({ meshApi, fetchPaged, config, groupId
     with_deleted: false,
     education_level_id: toEducationLevelId(group.class_level_id)
   }, 1000, 2);
+  debugControlForms('control_forms primary', controlForms);
   let controlForm = pickControlForm(controlForms);
   if (!controlForm) {
     // Fallback: на части окружений education_level_id режет список форм контроля.
@@ -234,6 +259,7 @@ export async function buildMarkingPreview({ meshApi, fetchPaged, config, groupId
       with_grade_system: true,
       with_deleted: false
     }, 1000, 2);
+    debugControlForms('control_forms fallback', fallbackControlForms);
     controlForm = pickControlForm(fallbackControlForms);
   }
   if (!controlForm) throw new Error('Не найдена форма контроля "Практическая работа" (10-балльная)');
