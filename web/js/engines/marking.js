@@ -49,13 +49,48 @@ function pickPracticalLesson(items) {
 
 function pickControlForm(forms) {
   const list = Array.isArray(forms) ? forms : [];
-  const filtered = list.filter((f) => {
-    const title = `${norm(f.name)} ${norm(f.short_name)}`.toLowerCase();
-    const nmax = Number(f?.grade_system?.nmax);
-    return /практич/.test(title) && Number.isFinite(nmax) && nmax >= 10;
+  const practical = list.filter((f) => /практич/.test(`${norm(f.name)} ${norm(f.short_name)}`.toLowerCase()));
+  if (!practical.length) return null;
+
+  const parseNmaxFromText = (v) => {
+    const s = norm(v).toLowerCase();
+    if (!s) return null;
+    const m = s.match(/(\d+)\s*[- ]?\s*бал/);
+    if (m && Number.isFinite(Number(m[1]))) return Number(m[1]);
+    if (/\b10\b/.test(s)) return 10;
+    return null;
+  };
+
+  const parseNmax = (f) => {
+    const candidates = [
+      f?.grade_system?.nmax,
+      f?.grade_system?.max,
+      f?.grade_system?.max_value,
+      f?.grade_system?.value_max,
+      f?.grade_system_nmax,
+      f?.nmax
+    ];
+    for (const c of candidates) {
+      const n = Number(c);
+      if (Number.isFinite(n)) return n;
+    }
+    return parseNmaxFromText(f?.grade_system?.name) ?? parseNmaxFromText(f?.grade_system_name);
+  };
+
+  const withScore = practical.map((f) => {
+    const nmax = parseNmax(f);
+    const score = Number.isFinite(nmax) ? (nmax === 10 ? 100 : nmax >= 10 ? 80 : 0) : 20;
+    return { f, nmax, score };
   });
-  filtered.sort((a, b) => Number(b.id || 0) - Number(a.id || 0));
-  return filtered[0] || null;
+
+  withScore.sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    return Number(b.f?.id || 0) - Number(a.f?.id || 0);
+  });
+
+  // Предпочитаем явную 10-балльную форму, но если система не вернула nmax, берём лучший практический вариант.
+  const best = withScore.find((x) => x.score >= 80) || withScore.find((x) => x.score >= 20) || null;
+  return best?.f || null;
 }
 
 function findThemeIntegrationId(scheduleItem) {
@@ -189,9 +224,28 @@ export async function buildMarkingPreview({ meshApi, fetchPaged, config, groupId
     with_deleted: false,
     education_level_id: toEducationLevelId(group.class_level_id)
   }, 1000, 2);
-
-  const controlForm = pickControlForm(controlForms);
+  let controlForm = pickControlForm(controlForms);
+  if (!controlForm) {
+    // Fallback: на части окружений education_level_id режет список форм контроля.
+    const fallbackControlForms = await fetchPaged('/api/ej/core/teacher/v1/control_forms', {
+      academic_year_id: academicYearId,
+      school_id: schoolId,
+      subject_id: Number(group.subject_id),
+      with_grade_system: true,
+      with_deleted: false
+    }, 1000, 2);
+    controlForm = pickControlForm(fallbackControlForms);
+  }
   if (!controlForm) throw new Error('Не найдена форма контроля "Практическая работа" (10-балльная)');
+
+  const controlFormGradeSystemId = Number(
+    controlForm?.grade_system?.id
+    || controlForm?.grade_system_id
+    || controlForm?.grade_system?.grade_system_id
+  );
+  if (!Number.isFinite(controlFormGradeSystemId)) {
+    throw new Error('Не удалось определить grade_system_id у формы контроля "Практическая работа"');
+  }
 
   const rows = parsed.map((r) => {
     const matches = [...new Map((studentIndex.get(r.inputNameNorm) || []).map((x) => [x.id, x])).values()];
@@ -234,7 +288,7 @@ export async function buildMarkingPreview({ meshApi, fetchPaged, config, groupId
     controlForm: {
       id: Number(controlForm.id),
       name: norm(controlForm.name),
-      gradeSystemId: Number(controlForm?.grade_system?.id || controlForm.grade_system_id)
+      gradeSystemId: controlFormGradeSystemId
     },
     comment: String(comment || ''),
     rows,
