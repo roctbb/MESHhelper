@@ -219,6 +219,7 @@ const markingScreen = new MarkingScreen(refs, state, {
       meshApi: api.meshApi,
       fetchPaged: api.fetchPaged,
       config: state.config,
+      auth: state.auth,
       groupId: payload.groupId,
       namesText: payload.namesText,
       marksText: payload.marksText,
