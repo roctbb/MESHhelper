@@ -1,4 +1,4 @@
-import { isTokenExpired, normalizeName } from './utils.js';
+import { normalizeName } from './utils.js';
 
 export const KEYS = {
   auth: 'mesh_auth_v1',
@@ -13,7 +13,6 @@ export function loadAuth() {
     if (!raw) return null;
     const auth = JSON.parse(raw);
     if (!auth || !auth.token || !auth.profileId) return null;
-    if (isTokenExpired(auth.token)) return null;
     return auth;
   } catch (_) {
     return null;

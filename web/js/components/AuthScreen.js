@@ -1,4 +1,4 @@
-import { norm, isTokenExpired } from '../utils.js';
+import { norm } from '../utils.js';
 
 export class AuthScreen {
   constructor(refs, { onSave }) {
@@ -26,7 +26,6 @@ export class AuthScreen {
           aid: norm(this.refs.aidInput.value) || '13'
         };
         if (!auth.token || !auth.profileId) throw new Error('Заполните token и profile_id');
-        if (isTokenExpired(auth.token)) throw new Error('Токен просрочен');
         await this.onSave(auth);
         this.refs.authStatus.textContent = 'Готово';
       } catch (err) {
