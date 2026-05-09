@@ -16,7 +16,7 @@ import { ModeScreen } from './components/ModeScreen.js';
 import { AnalyticsScreen } from './components/AnalyticsScreen.js';
 import { MarkingScreen } from './components/MarkingScreen.js';
 import { loadAnalyticsData } from './engines/analytics.js';
-import { loadGroupsForMarking, buildMarkingPreview, applyMarkingPreview } from './engines/marking.js';
+import { loadGroupsForMarking, loadControlFormsForMarking, buildMarkingPreview, applyMarkingPreview } from './engines/marking.js';
 
 const state = {
   config: null,
@@ -38,6 +38,8 @@ const state = {
     loaded: false,
     loading: false,
     groups: [],
+    controlForms: [],
+    controlFormsGroupId: '',
     preview: null
   },
   ui: {
@@ -99,6 +101,7 @@ const refs = {
   markingLoaderText: document.getElementById('markingLoaderText'),
   markingContent: document.getElementById('markingContent'),
   groupSelect: document.getElementById('groupSelect'),
+  controlFormSelect: document.getElementById('controlFormSelect'),
   commentInput: document.getElementById('commentInput'),
   namesInput: document.getElementById('namesInput'),
   gradesInput: document.getElementById('gradesInput'),
@@ -214,6 +217,18 @@ const analyticsScreen = new AnalyticsScreen(refs, state, {
 });
 
 const markingScreen = new MarkingScreen(refs, state, {
+  loadControlForms: async (groupId) => {
+    const data = await loadControlFormsForMarking({
+      meshApi: api.meshApi,
+      fetchPaged: api.fetchPaged,
+      config: state.config,
+      auth: state.auth,
+      groupId
+    });
+    state.marking.controlForms = data.controlForms;
+    state.marking.controlFormsGroupId = String(groupId || '');
+    return data;
+  },
   preview: async (payload) => {
     return buildMarkingPreview({
       meshApi: api.meshApi,
@@ -221,6 +236,7 @@ const markingScreen = new MarkingScreen(refs, state, {
       config: state.config,
       auth: state.auth,
       groupId: payload.groupId,
+      controlFormId: payload.controlFormId,
       namesText: payload.namesText,
       marksText: payload.marksText,
       comment: payload.comment
@@ -286,6 +302,7 @@ async function openMarking() {
       state.marking.groups = groups;
       state.marking.loaded = true;
       markingScreen.renderGroups();
+      await markingScreen.loadControlFormsForSelectedGroup();
     } finally {
       state.marking.loading = false;
     }

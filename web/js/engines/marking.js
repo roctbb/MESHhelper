@@ -117,6 +117,65 @@ function debugControlForms(label, forms) {
   console.groupEnd();
 }
 
+function formatControlForm(f) {
+  const id = Number(f?.id);
+  const name = norm(f?.name || f?.short_name || `Форма ${id}`);
+  const gradeSystemName = norm(f?.grade_system?.name || f?.grade_system_name);
+  const label = gradeSystemName ? `${name} (${gradeSystemName})` : name;
+  return { ...f, id, name, label };
+}
+
+async function loadControlFormsContext({ meshApi, fetchPaged, config, auth, gid }) {
+  const group = await meshApi(`/api/ej/plan/teacher/v1/groups/${gid}`);
+  const academicYearId = Number(config.academicYearId) || 13;
+  let teacher = null;
+  if (auth?.profileId) {
+    teacher = await meshApi(`/api/ej/core/teacher/v1/teacher_profiles/${auth.profileId}`, {
+      query: { with_assigned_groups: true, with_replacement_groups: true }
+    });
+  }
+  const schoolId = Number(config.schoolId) || Number(group.school_id) || Number(teacher?.school_id) || 0;
+  if (!Number.isFinite(schoolId) || schoolId <= 0) {
+    throw new Error('Не удалось определить school_id для запроса форм контроля');
+  }
+
+  const controlFormsQuery = {
+    academic_year_id: academicYearId,
+    school_id: schoolId,
+    subject_id: Number(group.subject_id),
+    with_grade_system: true,
+    with_deleted: false,
+    education_level_id: toEducationLevelId(group.class_level_id)
+  };
+  console.log('[MESHhelper] control_forms primary query', controlFormsQuery);
+  const controlForms = await fetchPaged('/api/ej/core/teacher/v1/control_forms', controlFormsQuery, 1000, 2);
+  debugControlForms('control_forms primary', controlForms);
+
+  if (controlForms.length) {
+    return { group, controlForms: controlForms.map(formatControlForm) };
+  }
+
+  // Fallback: на части окружений education_level_id режет список форм контроля.
+  const fallbackControlFormsQuery = {
+    academic_year_id: academicYearId,
+    school_id: schoolId,
+    subject_id: Number(group.subject_id),
+    with_grade_system: true,
+    with_deleted: false
+  };
+  console.log('[MESHhelper] control_forms fallback query', fallbackControlFormsQuery);
+  const fallbackControlForms = await fetchPaged('/api/ej/core/teacher/v1/control_forms', fallbackControlFormsQuery, 1000, 2);
+  debugControlForms('control_forms fallback', fallbackControlForms);
+  return { group, controlForms: fallbackControlForms.map(formatControlForm) };
+}
+
+export async function loadControlFormsForMarking({ meshApi, fetchPaged, config, auth, groupId }) {
+  const gid = Number(groupId);
+  if (!Number.isFinite(gid)) throw new Error('Выберите группу');
+  const { controlForms } = await loadControlFormsContext({ meshApi, fetchPaged, config, auth, gid });
+  return { controlForms };
+}
+
 function findThemeIntegrationId(scheduleItem) {
   const didactic = Array.isArray(scheduleItem?.didactic_units) ? scheduleItem.didactic_units : [];
   const fromDidactic = didactic.map((x) => Number(x.theme_integration_id)).find(Number.isFinite);
@@ -167,7 +226,7 @@ export async function loadGroupsForMarking({ meshApi, fetchPaged, config, auth, 
   return { groups };
 }
 
-export async function buildMarkingPreview({ meshApi, fetchPaged, config, auth, groupId, namesText, marksText, comment }) {
+export async function buildMarkingPreview({ meshApi, fetchPaged, config, auth, groupId, controlFormId, namesText, marksText, comment }) {
   const gid = Number(groupId);
   if (!Number.isFinite(gid)) throw new Error('Выберите группу');
 
@@ -189,19 +248,9 @@ export async function buildMarkingPreview({ meshApi, fetchPaged, config, auth, g
     };
   });
 
-  const group = await meshApi(`/api/ej/plan/teacher/v1/groups/${gid}`);
+  const { group, controlForms } = await loadControlFormsContext({ meshApi, fetchPaged, config, auth, gid });
   const classUnitIds = Array.isArray(group.class_unit_ids) ? group.class_unit_ids.map((x) => Number(x)).filter(Number.isFinite) : [];
   const academicYearId = Number(config.academicYearId) || 13;
-  let teacher = null;
-  if (auth?.profileId) {
-    teacher = await meshApi(`/api/ej/core/teacher/v1/teacher_profiles/${auth.profileId}`, {
-      query: { with_assigned_groups: true, with_replacement_groups: true }
-    });
-  }
-  const schoolId = Number(config.schoolId) || Number(group.school_id) || Number(teacher?.school_id) || 0;
-  if (!Number.isFinite(schoolId) || schoolId <= 0) {
-    throw new Error('Не удалось определить school_id для запроса форм контроля');
-  }
 
   const students = await fetchPaged('/api/ej/core/teacher/v1/student_profiles', {
     academic_year_id: academicYearId,
@@ -249,33 +298,11 @@ export async function buildMarkingPreview({ meshApi, fetchPaged, config, auth, g
   const lesson = pickPracticalLesson(scheduleItems);
   if (!lesson) throw new Error('Не найден прошедший урок с типом "Практическая работа"');
 
-  const controlFormsQuery = {
-    academic_year_id: academicYearId,
-    school_id: schoolId,
-    subject_id: Number(group.subject_id),
-    with_grade_system: true,
-    with_deleted: false,
-    education_level_id: toEducationLevelId(group.class_level_id)
-  };
-  console.log('[MESHhelper] control_forms primary query', controlFormsQuery);
-  const controlForms = await fetchPaged('/api/ej/core/teacher/v1/control_forms', controlFormsQuery, 1000, 2);
-  debugControlForms('control_forms primary', controlForms);
-  let controlForm = pickControlForm(controlForms);
-  if (!controlForm) {
-    // Fallback: на части окружений education_level_id режет список форм контроля.
-    const fallbackControlFormsQuery = {
-      academic_year_id: academicYearId,
-      school_id: schoolId,
-      subject_id: Number(group.subject_id),
-      with_grade_system: true,
-      with_deleted: false
-    };
-    console.log('[MESHhelper] control_forms fallback query', fallbackControlFormsQuery);
-    const fallbackControlForms = await fetchPaged('/api/ej/core/teacher/v1/control_forms', fallbackControlFormsQuery, 1000, 2);
-    debugControlForms('control_forms fallback', fallbackControlForms);
-    controlForm = pickControlForm(fallbackControlForms);
-  }
-  if (!controlForm) throw new Error('Не найдена форма контроля "Практическая работа" (10-балльная)');
+  const selectedControlFormId = Number(controlFormId);
+  const controlForm = Number.isFinite(selectedControlFormId)
+    ? controlForms.find((f) => Number(f.id) === selectedControlFormId)
+    : pickControlForm(controlForms);
+  if (!controlForm) throw new Error('Выберите форму оценивания');
 
   const controlFormGradeSystemId = Number(
     controlForm?.grade_system?.id

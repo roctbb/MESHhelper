@@ -26,6 +26,36 @@ export class MarkingScreen {
     }
   }
 
+  renderControlForms() {
+    this.refs.controlFormSelect.innerHTML = '';
+    const forms = this.state.marking.controlForms || [];
+    forms.forEach((f) => {
+      const opt = document.createElement('option');
+      opt.value = String(f.id);
+      opt.textContent = f.label || f.name || `Форма ${f.id}`;
+      this.refs.controlFormSelect.appendChild(opt);
+    });
+    if (!forms.length) {
+      this.refs.controlFormSelect.innerHTML = '<option value="">Нет доступных форм</option>';
+    }
+  }
+
+  async loadControlFormsForSelectedGroup() {
+    const groupId = this.refs.groupSelect.value;
+    this.state.marking.preview = null;
+    this.refs.applyBtn.disabled = true;
+    this.refs.controlFormSelect.innerHTML = '<option value="">Загрузка...</option>';
+    if (!groupId) {
+      this.state.marking.controlForms = [];
+      this.renderControlForms();
+      return;
+    }
+    this.refs.markingStatus.textContent = 'Загружаем формы оценивания...';
+    await this.callbacks.loadControlForms(groupId);
+    this.renderControlForms();
+    this.refs.markingStatus.textContent = '';
+  }
+
   renderPreviewRows(rows) {
     this.refs.previewTableBody.innerHTML = '';
     if (!rows.length) {
@@ -47,12 +77,21 @@ export class MarkingScreen {
   }
 
   bind() {
+    this.refs.groupSelect.addEventListener('change', () => {
+      this.loadControlFormsForSelectedGroup().catch((err) => {
+        this.state.marking.controlForms = [];
+        this.renderControlForms();
+        this.refs.markingStatus.textContent = `Ошибка: ${err.message}`;
+      });
+    });
+
     this.refs.previewBtn.addEventListener('click', async () => {
       try {
         this.refs.markingStatus.textContent = 'Готовим предпросмотр...';
         this.refs.applyBtn.disabled = true;
         const preview = await this.callbacks.preview({
           groupId: this.refs.groupSelect.value,
+          controlFormId: this.refs.controlFormSelect.value,
           namesText: this.refs.namesInput.value,
           marksText: this.refs.gradesInput.value,
           comment: this.refs.commentInput.value

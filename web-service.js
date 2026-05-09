@@ -94,6 +94,9 @@ function buildProxyHeaders(auth, subsystem) {
   return {
     Accept: 'application/json, text/plain, */*',
     'Content-Type': 'application/json',
+    Origin: MESH_BASE,
+    Referer: `${MESH_BASE}/`,
+    'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/147.0.0.0 Safari/537.36',
     Authorization: `Bearer ${token}`,
     'Profile-Id': profileId,
     'X-Mes-RoleId': roleId,
