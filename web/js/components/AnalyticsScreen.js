@@ -305,21 +305,24 @@ export class AnalyticsScreen {
 
   renderStudentAnalytics() {
     const isFinalOnly = this.state.ui.analyticsViewMode === 'final';
-    const viewModeGroup = this.refs.viewModeAllBtn?.parentElement || null;
+    const isCalculatedMode = this.state.ui.analyticsGradeMode === 'calculated';
+    const controlsWrap = this.refs.viewModeAllBtn?.closest('.d-flex') || null;
     const tableWrap = this.refs.analyticsTableBody?.closest('.table-responsive') || null;
     this.refs.viewModeAllBtn.className = `btn btn-sm ${isFinalOnly ? 'btn-outline-primary' : 'btn-primary'}`;
     this.refs.viewModeFinalBtn.className = `btn btn-sm ${isFinalOnly ? 'btn-primary' : 'btn-outline-primary'}`;
+    this.refs.gradeModeFinalBtn.className = `btn btn-sm ${isCalculatedMode ? 'btn-outline-primary' : 'btn-primary'}`;
+    this.refs.gradeModeCalculatedBtn.className = `btn btn-sm ${isCalculatedMode ? 'btn-primary' : 'btn-outline-primary'}`;
 
     const name = this.state.analytics.selectedStudent;
     if (!name) {
-      if (viewModeGroup) viewModeGroup.style.display = 'none';
+      if (controlsWrap) controlsWrap.style.display = 'none';
       if (tableWrap) tableWrap.style.display = 'none';
       this.refs.analyticsTitle.textContent = 'Сводка по классу';
       this.refs.analyticsStats.textContent = 'Проблемные ученики, сильные тренды и точки ниже.';
       this.refs.analyticsTableBody.innerHTML = '<tr><td colspan="7" class="text-secondary p-3">Выберите ученика слева.</td></tr>';
       return;
     }
-    if (viewModeGroup) viewModeGroup.style.display = '';
+    if (controlsWrap) controlsWrap.style.display = '';
     if (tableWrap) tableWrap.style.display = '';
 
     const rows = this.state.analytics.byStudent[name] || [];
@@ -332,9 +335,10 @@ export class AnalyticsScreen {
       });
     }
     const absences = subjectRows.reduce((sum, x) => sum + Number(x.absencesCount || 0), 0);
+    const gradeModeLabel = isCalculatedMode ? 'среднее по реальным отметкам' : 'выставленные триместровые';
 
     this.refs.analyticsTitle.textContent = name;
-    this.refs.analyticsStats.textContent = `Предметов: ${subjectRows.length}, записей: ${rows.length}, пропусков: ${absences}, текущий: ${this.state.analytics.currentTrimester}`;
+    this.refs.analyticsStats.textContent = `Предметов: ${subjectRows.length}, записей: ${rows.length}, пропусков: ${absences}, текущий: ${this.state.analytics.currentTrimester}, режим: ${gradeModeLabel}`;
 
     if (!subjectRows.length) {
       this.refs.analyticsTableBody.innerHTML = '<tr><td colspan="7" class="text-secondary p-3">Нет данных по ученику.</td></tr>';
@@ -344,7 +348,8 @@ export class AnalyticsScreen {
     this.refs.analyticsTableBody.innerHTML = '';
     subjectRows.forEach((r) => {
       const tr = document.createElement('tr');
-      tr.className = this.rowClassByYearAvg(r.averageGrade);
+      const annualValue = isCalculatedMode ? r.averageGradeCalculated : r.averageGradeFinal;
+      tr.className = this.rowClassByYearAvg(annualValue);
 
       const trimHtml = (r.marksByTrimester || []).map((b) => {
         const badges = (b.marks || []).map((m) => (
@@ -354,13 +359,12 @@ export class AnalyticsScreen {
       }).join('');
 
       const t = this.state.analytics.trimesterLabels;
-      const t1 = isFinalOnly && r.trimesterSource?.[t[0]] !== 'final' ? null : r.trimesterRounded?.[t[0]];
-      const t2 = isFinalOnly && r.trimesterSource?.[t[1]] !== 'final' ? null : r.trimesterRounded?.[t[1]];
-      const t3 = isFinalOnly && r.trimesterSource?.[t[2]] !== 'final' ? null : r.trimesterRounded?.[t[2]];
-      const s1 = r.trimesterSource?.[t[0]] === 'final';
-      const s2 = r.trimesterSource?.[t[1]] === 'final';
-      const s3 = r.trimesterSource?.[t[2]] === 'final';
-      const annualValue = isFinalOnly && r.yearSource !== 'final' ? null : r.averageGrade;
+      const t1 = isCalculatedMode ? r.trimesterCalculatedAverages?.[t[0]] : r.trimesterFinalRounded?.[t[0]];
+      const t2 = isCalculatedMode ? r.trimesterCalculatedAverages?.[t[1]] : r.trimesterFinalRounded?.[t[1]];
+      const t3 = isCalculatedMode ? r.trimesterCalculatedAverages?.[t[2]] : r.trimesterFinalRounded?.[t[2]];
+      const s1 = !isCalculatedMode && Number.isFinite(t1);
+      const s2 = !isCalculatedMode && Number.isFinite(t2);
+      const s3 = !isCalculatedMode && Number.isFinite(t3);
 
       const trend = r.trend === 'up'
         ? (r.trendStrength === 'strong'
@@ -374,7 +378,9 @@ export class AnalyticsScreen {
 
       const trimBadge = (v, isFinal) => {
         if (!Number.isFinite(v)) return '<span class="badge text-bg-secondary">—</span>';
-        return `<span class="badge ${badgeClass(v)}${isFinal ? ' trimester-final' : ''}">${Math.round(v)}</span>`;
+        const label = isCalculatedMode ? Number(v).toFixed(2) : String(Math.round(v));
+        const title = isCalculatedMode ? 'Среднее по реальным отметкам' : 'Выставленная триместровая отметка';
+        return `<span class="badge ${badgeClass(v)}${isFinal ? ' trimester-final' : ''}" title="${title}">${label}</span>`;
       };
 
       tr.innerHTML = `
@@ -418,6 +424,14 @@ export class AnalyticsScreen {
 
     this.refs.viewModeFinalBtn.addEventListener('click', () => {
       this.callbacks.changeViewMode('final');
+    });
+
+    this.refs.gradeModeFinalBtn.addEventListener('click', () => {
+      this.callbacks.changeGradeMode('final');
+    });
+
+    this.refs.gradeModeCalculatedBtn.addEventListener('click', () => {
+      this.callbacks.changeGradeMode('calculated');
     });
 
     this.refs.goSummaryBtn?.addEventListener('click', () => {

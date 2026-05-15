@@ -240,9 +240,15 @@
             <div>
               <h3 id="analyticsTitle" class="h5 fw-bold mb-1">Выберите ученика</h3>
               <div id="analyticsStats" class="small-muted">—</div>
-              <div class="btn-group btn-group-sm mt-2" role="group" aria-label="Режим просмотра">
-                <button id="viewModeAllBtn" type="button" class="btn btn-primary">Все отметки</button>
-                <button id="viewModeFinalBtn" type="button" class="btn btn-outline-primary">Факт. трим./год</button>
+              <div class="d-flex flex-wrap gap-2 mt-2">
+                <div class="btn-group btn-group-sm" role="group" aria-label="Источник триместровых значений">
+                  <button id="gradeModeFinalBtn" type="button" class="btn btn-primary">Выставленные трим.</button>
+                  <button id="gradeModeCalculatedBtn" type="button" class="btn btn-outline-primary">Среднее по отметкам</button>
+                </div>
+                <div class="btn-group btn-group-sm" role="group" aria-label="Режим просмотра записей">
+                  <button id="viewModeAllBtn" type="button" class="btn btn-primary">Все записи</button>
+                  <button id="viewModeFinalBtn" type="button" class="btn btn-outline-primary">Только итоговые</button>
+                </div>
               </div>
             </div>
 

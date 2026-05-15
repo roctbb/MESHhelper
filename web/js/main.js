@@ -46,7 +46,8 @@ const state = {
     search: '',
     sort: 'avg_desc',
     showHiddenStudents: false,
-    analyticsViewMode: 'all'
+    analyticsViewMode: 'all',
+    analyticsGradeMode: 'final'
   }
 };
 
@@ -83,6 +84,8 @@ const refs = {
   analyticsStats: document.getElementById('analyticsStats'),
   viewModeAllBtn: document.getElementById('viewModeAllBtn'),
   viewModeFinalBtn: document.getElementById('viewModeFinalBtn'),
+  gradeModeFinalBtn: document.getElementById('gradeModeFinalBtn'),
+  gradeModeCalculatedBtn: document.getElementById('gradeModeCalculatedBtn'),
   analyticsTableBody: document.getElementById('analyticsTableBody'),
   debtBlock: document.getElementById('debtBlock'),
   debtGrid: document.getElementById('debtGrid'),
@@ -205,6 +208,10 @@ const analyticsScreen = new AnalyticsScreen(refs, state, {
   },
   changeViewMode: (mode) => {
     state.ui.analyticsViewMode = mode === 'final' ? 'final' : 'all';
+    analyticsScreen.renderStudentAnalytics();
+  },
+  changeGradeMode: (mode) => {
+    state.ui.analyticsGradeMode = mode === 'calculated' ? 'calculated' : 'final';
     analyticsScreen.renderStudentAnalytics();
   },
   goSummary: () => {

@@ -348,16 +348,26 @@ export function buildSubjectRows(rows, trimesterLabels, trimesterBoundaries) {
     const trimesterAverages = {};
     const trimesterRounded = {};
     const trimesterSource = {};
+    const trimesterFinalMarks = {};
+    const trimesterFinalRounded = {};
+    const trimesterCalculatedAverages = {};
+    const trimesterCalculatedRounded = {};
 
     trimesterLabels.forEach((label) => {
       const explicit = s.explicitTrimesterMarks.get(label);
       const st = s.trimesterStats.get(label);
+      const calculated = st && st.weight > 0 ? Number((st.sum / st.weight).toFixed(2)) : null;
+
+      trimesterFinalMarks[label] = Number.isFinite(explicit) ? Number(explicit) : null;
+      trimesterFinalRounded[label] = Number.isFinite(explicit) ? Math.round(explicit) : null;
+      trimesterCalculatedAverages[label] = Number.isFinite(calculated) ? calculated : null;
+      trimesterCalculatedRounded[label] = Number.isFinite(calculated) ? Math.round(calculated) : null;
 
       if (Number.isFinite(explicit)) {
         trimesterAverages[label] = Number(explicit);
         trimesterSource[label] = 'final';
-      } else if (st && st.weight > 0) {
-        trimesterAverages[label] = Number((st.sum / st.weight).toFixed(2));
+      } else if (Number.isFinite(calculated)) {
+        trimesterAverages[label] = calculated;
         trimesterSource[label] = 'calculated';
       } else {
         trimesterAverages[label] = null;
@@ -368,6 +378,10 @@ export function buildSubjectRows(rows, trimesterLabels, trimesterBoundaries) {
 
     const rounded = Object.values(trimesterRounded).filter(Number.isFinite);
     const annualCalculated = rounded.length ? Number((rounded.reduce((a, b) => a + b, 0) / rounded.length).toFixed(2)) : null;
+    const finalRounded = Object.values(trimesterFinalRounded).filter(Number.isFinite);
+    const annualFinal = Number.isFinite(s.explicitYearMark)
+      ? Number(s.explicitYearMark)
+      : (finalRounded.length ? Number((finalRounded.reduce((a, b) => a + b, 0) / finalRounded.length).toFixed(2)) : null);
     const annual = Number.isFinite(s.explicitYearMark) ? Number(s.explicitYearMark) : annualCalculated;
     const yearSource = Number.isFinite(s.explicitYearMark) ? 'final' : (Number.isFinite(annualCalculated) ? 'calculated' : null);
 
@@ -420,6 +434,8 @@ export function buildSubjectRows(rows, trimesterLabels, trimesterBoundaries) {
       absencesCount: s.absencesCount,
       averageGrade: annual,
       averageGradeRaw: s.gradesWeight > 0 ? Number((s.gradesSum / s.gradesWeight).toFixed(2)) : null,
+      averageGradeCalculated: s.gradesWeight > 0 ? Number((s.gradesSum / s.gradesWeight).toFixed(2)) : null,
+      averageGradeFinal: annualFinal,
       yearSource,
       trend,
       trendDiff: trendDiff !== null ? Number(trendDiff.toFixed(2)) : null,
@@ -427,6 +443,10 @@ export function buildSubjectRows(rows, trimesterLabels, trimesterBoundaries) {
       trimesterAverages,
       trimesterRounded,
       trimesterSource,
+      trimesterFinalMarks,
+      trimesterFinalRounded,
+      trimesterCalculatedAverages,
+      trimesterCalculatedRounded,
       marksByTrimester
     };
   }).sort((a, b) => a.subject.localeCompare(b.subject, 'ru'));
