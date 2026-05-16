@@ -370,7 +370,7 @@ export class AnalyticsScreen {
       const trimValue = (label) => {
         if (isCalculatedMode) return r.trimesterCalculatedAverages?.[label];
         if (isFinalMode) return r.trimesterFinalRounded?.[label];
-        return r.trimesterRounded?.[label];
+        return r.trimesterAverages?.[label];
       };
       const t1 = trimValue(t[0]);
       const t2 = trimValue(t[1]);
@@ -391,7 +391,7 @@ export class AnalyticsScreen {
 
       const trimBadge = (v, isFinal) => {
         if (!Number.isFinite(v)) return '<span class="badge text-bg-secondary">—</span>';
-        const label = isCalculatedMode ? Number(v).toFixed(2) : String(Math.round(v));
+        const label = isCalculatedMode || (!isFinalMode && !isFinal) ? Number(v).toFixed(2) : String(Math.round(v));
         const title = isCalculatedMode
           ? 'Среднее по реальным отметкам'
           : isFinal
