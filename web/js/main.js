@@ -47,7 +47,7 @@ const state = {
     sort: 'avg_desc',
     showHiddenStudents: false,
     analyticsViewMode: 'all',
-    analyticsGradeMode: 'final'
+    analyticsGradeMode: 'mixed'
   }
 };
 
@@ -84,6 +84,7 @@ const refs = {
   analyticsStats: document.getElementById('analyticsStats'),
   viewModeAllBtn: document.getElementById('viewModeAllBtn'),
   viewModeFinalBtn: document.getElementById('viewModeFinalBtn'),
+  gradeModeMixedBtn: document.getElementById('gradeModeMixedBtn'),
   gradeModeFinalBtn: document.getElementById('gradeModeFinalBtn'),
   gradeModeCalculatedBtn: document.getElementById('gradeModeCalculatedBtn'),
   analyticsTableBody: document.getElementById('analyticsTableBody'),
@@ -211,7 +212,7 @@ const analyticsScreen = new AnalyticsScreen(refs, state, {
     analyticsScreen.renderStudentAnalytics();
   },
   changeGradeMode: (mode) => {
-    state.ui.analyticsGradeMode = mode === 'calculated' ? 'calculated' : 'final';
+    state.ui.analyticsGradeMode = ['final', 'calculated'].includes(mode) ? mode : 'mixed';
     analyticsScreen.renderStudentAnalytics();
   },
   goSummary: () => {

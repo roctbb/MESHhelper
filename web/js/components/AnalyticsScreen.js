@@ -11,13 +11,14 @@ export class AnalyticsScreen {
 
   avgBadge(v) {
     if (!Number.isFinite(v)) return '<span class="badge text-bg-secondary">—</span>';
-    return `<span class="badge ${badgeClass(v)}">${v.toFixed(2)}</span>`;
+    return `<span class="badge ${badgeClass(Math.round(v))}">${v.toFixed(2)}</span>`;
   }
 
   rowClassByYearAvg(v) {
     if (!Number.isFinite(v)) return '';
-    if (v < 5) return 'table-danger';
-    if (v < 7) return 'table-warning';
+    const rounded = Math.round(v);
+    if (rounded < 5) return 'table-danger';
+    if (rounded < 7) return 'table-warning';
     return '';
   }
 
@@ -305,12 +306,15 @@ export class AnalyticsScreen {
 
   renderStudentAnalytics() {
     const isFinalOnly = this.state.ui.analyticsViewMode === 'final';
-    const isCalculatedMode = this.state.ui.analyticsGradeMode === 'calculated';
+    const gradeMode = this.state.ui.analyticsGradeMode || 'mixed';
+    const isFinalMode = gradeMode === 'final';
+    const isCalculatedMode = gradeMode === 'calculated';
     const controlsWrap = this.refs.viewModeAllBtn?.closest('.d-flex') || null;
     const tableWrap = this.refs.analyticsTableBody?.closest('.table-responsive') || null;
     this.refs.viewModeAllBtn.className = `btn btn-sm ${isFinalOnly ? 'btn-outline-primary' : 'btn-primary'}`;
     this.refs.viewModeFinalBtn.className = `btn btn-sm ${isFinalOnly ? 'btn-primary' : 'btn-outline-primary'}`;
-    this.refs.gradeModeFinalBtn.className = `btn btn-sm ${isCalculatedMode ? 'btn-outline-primary' : 'btn-primary'}`;
+    this.refs.gradeModeMixedBtn.className = `btn btn-sm ${gradeMode === 'mixed' ? 'btn-primary' : 'btn-outline-primary'}`;
+    this.refs.gradeModeFinalBtn.className = `btn btn-sm ${isFinalMode ? 'btn-primary' : 'btn-outline-primary'}`;
     this.refs.gradeModeCalculatedBtn.className = `btn btn-sm ${isCalculatedMode ? 'btn-primary' : 'btn-outline-primary'}`;
 
     const name = this.state.analytics.selectedStudent;
@@ -335,7 +339,11 @@ export class AnalyticsScreen {
       });
     }
     const absences = subjectRows.reduce((sum, x) => sum + Number(x.absencesCount || 0), 0);
-    const gradeModeLabel = isCalculatedMode ? 'среднее по реальным отметкам' : 'выставленные триместровые';
+    const gradeModeLabel = isCalculatedMode
+      ? 'среднее по реальным отметкам'
+      : isFinalMode
+        ? 'выставленные триместровые'
+        : 'смешанный';
 
     this.refs.analyticsTitle.textContent = name;
     this.refs.analyticsStats.textContent = `Предметов: ${subjectRows.length}, записей: ${rows.length}, пропусков: ${absences}, текущий: ${this.state.analytics.currentTrimester}, режим: ${gradeModeLabel}`;
@@ -348,7 +356,7 @@ export class AnalyticsScreen {
     this.refs.analyticsTableBody.innerHTML = '';
     subjectRows.forEach((r) => {
       const tr = document.createElement('tr');
-      const annualValue = isCalculatedMode ? r.averageGradeCalculated : r.averageGradeFinal;
+      const annualValue = isCalculatedMode ? r.averageGradeCalculated : isFinalMode ? r.averageGradeFinal : r.averageGrade;
       tr.className = this.rowClassByYearAvg(annualValue);
 
       const trimHtml = (r.marksByTrimester || []).map((b) => {
@@ -359,12 +367,17 @@ export class AnalyticsScreen {
       }).join('');
 
       const t = this.state.analytics.trimesterLabels;
-      const t1 = isCalculatedMode ? r.trimesterCalculatedAverages?.[t[0]] : r.trimesterFinalRounded?.[t[0]];
-      const t2 = isCalculatedMode ? r.trimesterCalculatedAverages?.[t[1]] : r.trimesterFinalRounded?.[t[1]];
-      const t3 = isCalculatedMode ? r.trimesterCalculatedAverages?.[t[2]] : r.trimesterFinalRounded?.[t[2]];
-      const s1 = !isCalculatedMode && Number.isFinite(t1);
-      const s2 = !isCalculatedMode && Number.isFinite(t2);
-      const s3 = !isCalculatedMode && Number.isFinite(t3);
+      const trimValue = (label) => {
+        if (isCalculatedMode) return r.trimesterCalculatedAverages?.[label];
+        if (isFinalMode) return r.trimesterFinalRounded?.[label];
+        return r.trimesterRounded?.[label];
+      };
+      const t1 = trimValue(t[0]);
+      const t2 = trimValue(t[1]);
+      const t3 = trimValue(t[2]);
+      const s1 = !isCalculatedMode && r.trimesterSource?.[t[0]] === 'final';
+      const s2 = !isCalculatedMode && r.trimesterSource?.[t[1]] === 'final';
+      const s3 = !isCalculatedMode && r.trimesterSource?.[t[2]] === 'final';
 
       const trend = r.trend === 'up'
         ? (r.trendStrength === 'strong'
@@ -379,8 +392,12 @@ export class AnalyticsScreen {
       const trimBadge = (v, isFinal) => {
         if (!Number.isFinite(v)) return '<span class="badge text-bg-secondary">—</span>';
         const label = isCalculatedMode ? Number(v).toFixed(2) : String(Math.round(v));
-        const title = isCalculatedMode ? 'Среднее по реальным отметкам' : 'Выставленная триместровая отметка';
-        return `<span class="badge ${badgeClass(v)}${isFinal ? ' trimester-final' : ''}" title="${title}">${label}</span>`;
+        const title = isCalculatedMode
+          ? 'Среднее по реальным отметкам'
+          : isFinal
+            ? 'Выставленная триместровая отметка'
+            : 'Расчет по реальным отметкам';
+        return `<span class="badge ${badgeClass(Math.round(v))}${isFinal ? ' trimester-final' : ''}" title="${title}">${label}</span>`;
       };
 
       tr.innerHTML = `
@@ -424,6 +441,10 @@ export class AnalyticsScreen {
 
     this.refs.viewModeFinalBtn.addEventListener('click', () => {
       this.callbacks.changeViewMode('final');
+    });
+
+    this.refs.gradeModeMixedBtn.addEventListener('click', () => {
+      this.callbacks.changeGradeMode('mixed');
     });
 
     this.refs.gradeModeFinalBtn.addEventListener('click', () => {
