@@ -1,4 +1,5 @@
 import { norm, normalizeName, parallelMap } from '../utils.js';
+import { buildSubjectRows } from './analytics.js';
 
 function mapGroup(g) {
   return {
@@ -405,4 +406,119 @@ export async function applyMarkingPreview({ meshApi, auth, preview }) {
   }
 
   return out;
+}
+
+function finalPreviewStatus(desiredGrade, existingGrade, noSourceReason) {
+  if (!Number.isFinite(desiredGrade)) {
+    return { status: 'skip_no_source', reason: noSourceReason || 'Нет данных для расчета' };
+  }
+  if (Number.isFinite(existingGrade) && Math.round(existingGrade) === Math.round(desiredGrade)) {
+    return { status: 'skip_same', reason: 'Уже выставлено' };
+  }
+  return { status: 'ready', reason: Number.isFinite(existingGrade) ? `Было: ${Math.round(existingGrade)}` : '' };
+}
+
+function pickExistingIntermediateMark(rows) {
+  const found = rows.find((row) => {
+    if (row.markType !== 'final_trimester') return false;
+    const label = `${norm(row.trimesterLabel)} ${norm(row.period)}`.toLowerCase();
+    return /промежуточ|аттест/.test(label) && Number.isFinite(Number(row.numericMark));
+  });
+  return found ? Number(found.numericMark) : null;
+}
+
+function pickExistingYearMark(rows) {
+  const found = rows.find((row) => row.markType === 'final_year' && Number.isFinite(Number(row.numericMark)));
+  return found ? Number(found.numericMark) : null;
+}
+
+function subjectIds(rows) {
+  const src = rows.find((row) => Number.isFinite(Number(row.studentProfileId)) && Number.isFinite(Number(row.subjectId))) || {};
+  return {
+    studentProfileId: Number(src.studentProfileId) || null,
+    subjectId: Number(src.subjectId) || null,
+    groupId: Number(src.groupId) || null
+  };
+}
+
+export function buildFinalMarksPreview({ byStudent, trimesterLabels, trimesterBoundaries }) {
+  const out = [];
+  let line = 1;
+
+  Object.entries(byStudent || {})
+    .sort(([a], [b]) => a.localeCompare(b, 'ru'))
+    .forEach(([studentName, rows]) => {
+      const subjectRows = buildSubjectRows(rows || [], trimesterLabels || [], trimesterBoundaries || []);
+
+      subjectRows.forEach((subjectRow) => {
+        const rawSubjectRows = (rows || []).filter((row) => row.subject === subjectRow.subject);
+        const ids = subjectIds(rawSubjectRows);
+        const proposedTrimesters = [];
+
+        (trimesterLabels || []).forEach((label) => {
+          const desiredGrade = subjectRow.trimesterCalculatedRounded?.[label];
+          const calculatedAverage = subjectRow.trimesterCalculatedAverages?.[label];
+          const existingGrade = subjectRow.trimesterFinalRounded?.[label];
+          const status = finalPreviewStatus(desiredGrade, existingGrade, 'Нет реальных отметок за триместр');
+          if (Number.isFinite(desiredGrade)) proposedTrimesters.push(desiredGrade);
+
+          out.push({
+            line: line++,
+            ...ids,
+            studentName,
+            subject: subjectRow.subject,
+            periodType: 'trimester',
+            periodLabel: label,
+            calculatedAverage,
+            existingGrade,
+            desiredGrade,
+            ...status
+          });
+        });
+
+        const annualGrade = proposedTrimesters.length
+          ? Math.round(proposedTrimesters.reduce((sum, grade) => sum + grade, 0) / proposedTrimesters.length)
+          : null;
+        const existingYearGrade = pickExistingYearMark(rawSubjectRows);
+        const yearStatus = finalPreviewStatus(annualGrade, existingYearGrade, 'Нет триместровых расчетов');
+
+        out.push({
+          line: line++,
+          ...ids,
+          studentName,
+          subject: subjectRow.subject,
+          periodType: 'year',
+          periodLabel: 'Год',
+          calculatedAverage: null,
+          existingGrade: existingYearGrade,
+          desiredGrade: annualGrade,
+          ...yearStatus
+        });
+
+        const existingIntermediateGrade = pickExistingIntermediateMark(rawSubjectRows);
+        const intermediateStatus = finalPreviewStatus(annualGrade, existingIntermediateGrade, 'Нет годовой отметки');
+        out.push({
+          line: line++,
+          ...ids,
+          studentName,
+          subject: subjectRow.subject,
+          periodType: 'intermediate',
+          periodLabel: 'Промежуточная аттестация',
+          calculatedAverage: null,
+          existingGrade: existingIntermediateGrade,
+          desiredGrade: annualGrade,
+          ...intermediateStatus
+        });
+      });
+    });
+
+  return {
+    rows: out,
+    summary: {
+      ready: out.filter((x) => x.status === 'ready').length,
+      same: out.filter((x) => x.status === 'skip_same').length,
+      skipped: out.filter((x) => String(x.status).startsWith('skip') && x.status !== 'skip_same').length,
+      errors: out.filter((x) => x.status === 'error').length
+    }
+  };
 }

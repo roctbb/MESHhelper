@@ -362,6 +362,36 @@
           </table>
         </div>
       </section>
+
+      <section class="panel p-3 mt-3">
+        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
+          <h3 class="h6 fw-bold mb-0">Итоговые отметки</h3>
+          <div class="d-flex gap-2 align-items-center">
+            <button id="finalPreviewBtn" class="btn btn-primary btn-sm">Предпросмотр итоговых</button>
+            <span id="finalMarkingStatus" class="small-muted"></span>
+          </div>
+        </div>
+
+        <div class="table-responsive">
+          <table class="table table-sm align-middle mb-0">
+            <thead>
+            <tr>
+              <th>#</th>
+              <th>Ученик</th>
+              <th>Предмет</th>
+              <th>Период</th>
+              <th class="text-center">Среднее</th>
+              <th class="text-center">Было</th>
+              <th class="text-center">Будет</th>
+              <th>Статус</th>
+            </tr>
+            </thead>
+            <tbody id="finalPreviewTableBody">
+            <tr><td colspan="8" class="text-secondary p-3">Сделайте предпросмотр.</td></tr>
+            </tbody>
+          </table>
+        </div>
+      </section>
     </div>
   </section>
 </div>

@@ -16,7 +16,7 @@ import { ModeScreen } from './components/ModeScreen.js';
 import { AnalyticsScreen } from './components/AnalyticsScreen.js';
 import { MarkingScreen } from './components/MarkingScreen.js';
 import { loadAnalyticsData } from './engines/analytics.js';
-import { loadGroupsForMarking, loadControlFormsForMarking, buildMarkingPreview, applyMarkingPreview } from './engines/marking.js';
+import { loadGroupsForMarking, loadControlFormsForMarking, buildMarkingPreview, applyMarkingPreview, buildFinalMarksPreview } from './engines/marking.js';
 
 const state = {
   config: null,
@@ -40,7 +40,11 @@ const state = {
     groups: [],
     controlForms: [],
     controlFormsGroupId: '',
-    preview: null
+    selectedControlFormId: '',
+    selectedControlFormLabel: '',
+    comment: '',
+    preview: null,
+    finalPreview: null
   },
   ui: {
     search: '',
@@ -112,7 +116,10 @@ const refs = {
   previewBtn: document.getElementById('previewBtn'),
   applyBtn: document.getElementById('applyBtn'),
   markingStatus: document.getElementById('markingStatus'),
-  previewTableBody: document.getElementById('previewTableBody')
+  previewTableBody: document.getElementById('previewTableBody'),
+  finalPreviewBtn: document.getElementById('finalPreviewBtn'),
+  finalMarkingStatus: document.getElementById('finalMarkingStatus'),
+  finalPreviewTableBody: document.getElementById('finalPreviewTableBody')
 };
 
 function setScreen(name) {
@@ -252,6 +259,39 @@ const markingScreen = new MarkingScreen(refs, state, {
   },
   apply: async (preview) => {
     return applyMarkingPreview({ meshApi: api.meshApi, auth: state.auth, preview });
+  },
+  previewFinals: async () => {
+    if (!state.analytics.loaded && !state.analytics.loading) {
+      state.analytics.loading = true;
+      try {
+        refs.finalMarkingStatus.textContent = 'Загружаем данные аналитики...';
+        const data = await loadAnalyticsData({
+          meshApi: api.meshApi,
+          fetchPaged: api.fetchPaged,
+          config: state.config,
+          auth: state.auth,
+          savedClassFilter: loadClassFilter(),
+          statusCb: (text) => { refs.finalMarkingStatus.textContent = text; }
+        });
+
+        state.analytics.students = data.students;
+        state.analytics.byStudent = data.byStudent;
+        state.analytics.studentCards = data.studentCards;
+        state.analytics.classOptions = data.classOptions;
+        state.analytics.selectedClassUnitId = data.selectedClassUnitId;
+        state.analytics.currentTrimester = data.currentTrimester;
+        state.analytics.trimesterLabels = data.trimesterLabels;
+        state.analytics.loaded = true;
+      } finally {
+        state.analytics.loading = false;
+      }
+    }
+
+    return buildFinalMarksPreview({
+      byStudent: state.analytics.byStudent,
+      trimesterLabels: state.analytics.trimesterLabels,
+      trimesterBoundaries: state.config.trimesterBoundaries || []
+    });
   }
 });
 
