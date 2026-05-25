@@ -20,9 +20,7 @@ export class FinalMarksScreen {
     options.forEach((g) => {
       const opt = document.createElement('option');
       opt.value = String(g.id);
-      const subject = g.subjectName || g.name || `Группа ${g.id}`;
-      const className = g.classUnitName || '';
-      opt.textContent = className ? `${subject} ${className}` : subject;
+      opt.textContent = `${g.name || g.subjectName || `Группа ${g.id}`} (${g.studentCount || 0})`;
       this.refs.finalGroupSelect.appendChild(opt);
     });
 
@@ -50,27 +48,69 @@ export class FinalMarksScreen {
     };
   }
 
+  selectedPeriodLabels() {
+    const selected = this.selectedPeriodTypes();
+    const labels = [...selected.trimesters];
+    if (selected.intermediate) labels.push('Промежуточная аттестация');
+    if (selected.year) labels.push('Год');
+    return labels;
+  }
+
+  rowKey(row) {
+    return `${row.studentProfileId || row.studentName}|${row.subjectId || row.subject}`;
+  }
+
+  renderPreviewCell(row) {
+    if (!row) return '<span class="text-secondary">—</span>';
+
+    const avg = Number.isFinite(Number(row.calculatedAverage)) ? `ср. ${Number(row.calculatedAverage).toFixed(2)}` : '';
+    const existing = Number.isFinite(Number(row.existingGrade)) ? `было ${Math.round(Number(row.existingGrade))}` : 'не было';
+    const desired = Number.isFinite(Number(row.desiredGrade)) ? Math.round(Number(row.desiredGrade)) : '—';
+    const details = [existing, avg, row.reason || ''].filter(Boolean).join(' · ');
+    return `
+      <div class="d-flex align-items-center justify-content-center gap-1">
+        <span class="fw-bold">${desired}</span>
+        <span class="badge ${this.statusBadge(row.status)}">${escapeHtml(row.status || '')}</span>
+      </div>
+      <div class="small-muted text-center">${escapeHtml(details)}</div>
+    `;
+  }
+
   renderPreviewRows(rows) {
+    const labels = this.selectedPeriodLabels();
+    const colCount = 2 + labels.length;
+    this.refs.finalPreviewTableHead.innerHTML = `
+      <tr>
+        <th>Ученик</th>
+        <th>Предмет</th>
+        ${labels.map((label) => `<th class="text-center">${escapeHtml(label)}</th>`).join('')}
+      </tr>
+    `;
     this.refs.finalPreviewTableBody.innerHTML = '';
     if (!rows.length) {
-      this.refs.finalPreviewTableBody.innerHTML = '<tr><td colspan="8" class="text-secondary p-3">Нет строк</td></tr>';
+      this.refs.finalPreviewTableBody.innerHTML = `<tr><td colspan="${colCount}" class="text-secondary p-3">Нет строк</td></tr>`;
       return;
     }
 
-    rows.forEach((r) => {
+    const grouped = new Map();
+    rows.forEach((row) => {
+      const key = this.rowKey(row);
+      if (!grouped.has(key)) {
+        grouped.set(key, {
+          studentName: row.studentName,
+          subject: row.subject,
+          byPeriod: new Map()
+        });
+      }
+      grouped.get(key).byPeriod.set(row.periodLabel, row);
+    });
+
+    [...grouped.values()].forEach((r) => {
       const tr = document.createElement('tr');
-      const avg = Number.isFinite(Number(r.calculatedAverage)) ? Number(r.calculatedAverage).toFixed(2) : '—';
-      const existing = Number.isFinite(Number(r.existingGrade)) ? Math.round(Number(r.existingGrade)) : '—';
-      const desired = Number.isFinite(Number(r.desiredGrade)) ? Math.round(Number(r.desiredGrade)) : '—';
       tr.innerHTML = `
-        <td>${r.line || ''}</td>
         <td>${escapeHtml(r.studentName || '—')}</td>
         <td>${escapeHtml(r.subject || '—')}</td>
-        <td>${escapeHtml(r.periodLabel || '—')}</td>
-        <td class="text-center">${avg}</td>
-        <td class="text-center">${existing}</td>
-        <td class="text-center">${desired}</td>
-        <td><span class="badge ${this.statusBadge(r.status)}">${escapeHtml(r.status || '')}</span> ${escapeHtml(r.reason || '')}</td>
+        ${labels.map((label) => `<td class="text-center">${this.renderPreviewCell(r.byPeriod.get(label))}</td>`).join('')}
       `;
       this.refs.finalPreviewTableBody.appendChild(tr);
     });
@@ -83,7 +123,8 @@ export class FinalMarksScreen {
 
   resetPreview() {
     this.state.finalMarks.preview = null;
-    this.refs.finalPreviewTableBody.innerHTML = '<tr><td colspan="8" class="text-secondary p-3">Сделайте предпросмотр.</td></tr>';
+    this.refs.finalPreviewTableHead.innerHTML = '<tr><th>Ученик</th><th>Предмет</th><th class="text-center">Отметки</th></tr>';
+    this.refs.finalPreviewTableBody.innerHTML = '<tr><td colspan="3" class="text-secondary p-3">Сделайте предпросмотр.</td></tr>';
     this.refs.finalMarkingStatus.textContent = '';
     this.refs.finalApplyBtn.disabled = true;
   }

@@ -577,17 +577,21 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
   }
   if (!groups.length) throw new Error('Нет доступных групп для аналитики');
 
-  statusCb(`Получаем список учеников (${selectedClassUnitIds.length} классов)...`);
-  const profiles = await fetchPaged('/api/ej/core/teacher/v1/student_profiles', {
+  statusCb(explicitGroupIds.length
+    ? `Получаем список учеников (${explicitGroupIds.length} групп)...`
+    : `Получаем список учеников (${selectedClassUnitIds.length} классов)...`);
+  const studentProfilesQuery = {
     academic_year_id: academicYearId,
-    class_unit_ids: selectedClassUnitIds.join(','),
+    class_unit_ids: explicitGroupIds.length ? '' : selectedClassUnitIds.join(','),
+    group_ids: explicitGroupIds.length ? explicitGroupIds.join(',') : '',
     with_groups: true,
     with_home_based_periods: true,
     with_deleted: false,
     with_final_marks: true,
     with_archived_groups: false,
     with_transferred: false
-  }, 300, 25);
+  };
+  const profiles = await fetchPaged('/api/ej/core/teacher/v1/student_profiles', studentProfilesQuery, 300, 25);
 
   const studentNameById = new Map();
   for (const p of profiles) {

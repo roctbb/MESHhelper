@@ -140,6 +140,7 @@ const refs = {
   finalPreviewBtn: document.getElementById('finalPreviewBtn'),
   finalApplyBtn: document.getElementById('finalApplyBtn'),
   finalMarkingStatus: document.getElementById('finalMarkingStatus'),
+  finalPreviewTableHead: document.getElementById('finalPreviewTableHead'),
   finalPreviewTableBody: document.getElementById('finalPreviewTableBody')
 };
 
