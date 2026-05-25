@@ -420,6 +420,7 @@ function finalPreviewStatus(desiredGrade, existingGrade, noSourceReason) {
 
 function pickExistingIntermediateMark(rows) {
   const found = rows.find((row) => {
+    if (row.markType === 'final_intermediate' && Number.isFinite(Number(row.numericMark))) return true;
     if (row.markType !== 'final_trimester') return false;
     const label = `${norm(row.trimesterLabel)} ${norm(row.period)}`.toLowerCase();
     return /промежуточ|аттест/.test(label) && Number.isFinite(Number(row.numericMark));
@@ -441,7 +442,7 @@ function subjectIds(rows) {
   };
 }
 
-export function buildFinalMarksPreview({ byStudent, trimesterLabels, trimesterBoundaries }) {
+export function buildFinalMarksPreview({ byStudent, trimesterLabels, trimesterBoundaries, trimesterPeriodIds, academicYearId }) {
   const out = [];
   let line = 1;
 
@@ -453,13 +454,17 @@ export function buildFinalMarksPreview({ byStudent, trimesterLabels, trimesterBo
       subjectRows.forEach((subjectRow) => {
         const rawSubjectRows = (rows || []).filter((row) => row.subject === subjectRow.subject);
         const ids = subjectIds(rawSubjectRows);
+        const subjectTrimesterPeriodIds = rawSubjectRows.find((row) => row.trimesterPeriodIds)?.trimesterPeriodIds || trimesterPeriodIds;
         const proposedTrimesters = [];
 
         (trimesterLabels || []).forEach((label) => {
           const desiredGrade = subjectRow.trimesterCalculatedRounded?.[label];
           const calculatedAverage = subjectRow.trimesterCalculatedAverages?.[label];
           const existingGrade = subjectRow.trimesterFinalRounded?.[label];
-          const status = finalPreviewStatus(desiredGrade, existingGrade, 'Нет реальных отметок за триместр');
+          const attestationPeriodId = Number(subjectTrimesterPeriodIds?.[label]) || null;
+          const status = Number.isFinite(desiredGrade) && !Number.isFinite(attestationPeriodId)
+            ? { status: 'error', reason: 'Не найден attestation_period_id триместра' }
+            : finalPreviewStatus(desiredGrade, existingGrade, 'Нет реальных отметок за триместр');
           if (Number.isFinite(desiredGrade)) proposedTrimesters.push(desiredGrade);
 
           out.push({
@@ -469,6 +474,7 @@ export function buildFinalMarksPreview({ byStudent, trimesterLabels, trimesterBo
             subject: subjectRow.subject,
             periodType: 'trimester',
             periodLabel: label,
+            attestationPeriodId,
             calculatedAverage,
             existingGrade,
             desiredGrade,
@@ -513,6 +519,7 @@ export function buildFinalMarksPreview({ byStudent, trimesterLabels, trimesterBo
     });
 
   return {
+    academicYearId: Number(academicYearId) || null,
     rows: out,
     summary: {
       ready: out.filter((x) => x.status === 'ready').length,
@@ -521,4 +528,92 @@ export function buildFinalMarksPreview({ byStudent, trimesterLabels, trimesterBo
       errors: out.filter((x) => x.status === 'error').length
     }
   };
+}
+
+function finalMarkPayload(preview, row) {
+  const grade = Math.round(Number(row.desiredGrade));
+  const base = {
+    comment: '',
+    subject_id: Number(row.subjectId),
+    student_profile_id: Number(row.studentProfileId),
+    academic_year_id: Number(preview.academicYearId),
+    is_year_mark: false,
+    year_mark: false,
+    attested: true,
+    eliminated: false,
+    is_good_reason: false,
+    module_id: null,
+    attestation_period_id: null,
+    academic_debt: false,
+    no_mark: false,
+    period_id: null,
+    value: String(grade),
+    mark_type: null,
+    grade_system_type: 'ten'
+  };
+
+  if (row.periodType === 'trimester') {
+    return {
+      ...base,
+      attestation_period_id: Number(row.attestationPeriodId)
+    };
+  }
+
+  if (row.periodType === 'intermediate') {
+    return {
+      ...base,
+      mark_type: 'intermediate_attestation'
+    };
+  }
+
+  if (row.periodType === 'year') {
+    return {
+      ...base,
+      is_year_mark: true,
+      year_mark: true
+    };
+  }
+
+  throw new Error(`Неизвестный тип итоговой отметки: ${row.periodType || '—'}`);
+}
+
+function validateFinalRow(preview, row) {
+  if (!Number.isFinite(Number(preview.academicYearId))) return 'Не задан academic_year_id';
+  if (!Number.isFinite(Number(row.studentProfileId))) return 'Не задан student_profile_id';
+  if (!Number.isFinite(Number(row.subjectId))) return 'Не задан subject_id';
+  if (!Number.isFinite(Number(row.desiredGrade))) return 'Нет итоговой отметки';
+  if (row.periodType === 'trimester' && !Number.isFinite(Number(row.attestationPeriodId))) {
+    return 'Не найден attestation_period_id триместра';
+  }
+  return '';
+}
+
+export async function applyFinalMarksPreview({ meshApi, preview }) {
+  const rows = Array.isArray(preview?.rows) ? preview.rows : [];
+  const out = [];
+
+  for (const row of rows) {
+    if (row.status !== 'ready') {
+      out.push({ ...row });
+      continue;
+    }
+
+    const validationError = validateFinalRow(preview, row);
+    if (validationError) {
+      out.push({ ...row, status: 'error', reason: validationError });
+      continue;
+    }
+
+    try {
+      const created = await meshApi('/api/ej/core/teacher/v1/final_marks', {
+        method: 'POST',
+        body: finalMarkPayload(preview, row)
+      });
+      out.push({ ...row, status: 'created', reason: '', finalMarkId: Number(created?.id) || null });
+    } catch (err) {
+      out.push({ ...row, status: 'error', reason: err.message || 'Ошибка API' });
+    }
+  }
+
+  return out;
 }

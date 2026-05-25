@@ -122,6 +122,11 @@ export class MarkingScreen {
     });
   }
 
+  updateFinalApplyState() {
+    const rows = this.state.marking.finalPreview?.rows || [];
+    this.refs.finalApplyBtn.disabled = !rows.some((row) => row.status === 'ready');
+  }
+
   bind() {
     this.refs.groupSelect.addEventListener('change', () => {
       this.loadControlFormsForSelectedGroup().catch((err) => {
@@ -187,15 +192,38 @@ export class MarkingScreen {
     this.refs.finalPreviewBtn.addEventListener('click', async () => {
       try {
         this.refs.finalMarkingStatus.textContent = 'Готовим предпросмотр итоговых...';
+        this.refs.finalApplyBtn.disabled = true;
         const preview = await this.callbacks.previewFinals();
         this.state.marking.finalPreview = preview;
         this.renderFinalPreviewRows(preview.rows || []);
 
         const s = preview.summary || {};
-        this.refs.finalMarkingStatus.textContent = `К изменению: ${s.ready || 0}, уже совпадают: ${s.same || 0}, пропуски: ${s.skipped || 0}`;
+        this.refs.finalMarkingStatus.textContent = `К изменению: ${s.ready || 0}, уже совпадают: ${s.same || 0}, пропуски: ${s.skipped || 0}, ошибки: ${s.errors || 0}`;
+        this.updateFinalApplyState();
       } catch (err) {
         this.refs.finalMarkingStatus.textContent = `Ошибка: ${err.message}`;
         this.state.marking.finalPreview = null;
+        this.refs.finalApplyBtn.disabled = true;
+      }
+    });
+
+    this.refs.finalApplyBtn.addEventListener('click', async () => {
+      if (!this.state.marking.finalPreview) return;
+      try {
+        this.refs.finalMarkingStatus.textContent = 'Отправляем итоговые отметки...';
+        this.refs.finalApplyBtn.disabled = true;
+        const results = await this.callbacks.applyFinals(this.state.marking.finalPreview);
+        this.state.marking.finalPreview = { ...this.state.marking.finalPreview, rows: results };
+        this.renderFinalPreviewRows(results);
+        const summary = {
+          created: results.filter((x) => x.status === 'created').length,
+          skipped: results.filter((x) => String(x.status).startsWith('skip')).length,
+          errors: results.filter((x) => x.status === 'error').length
+        };
+        this.refs.finalMarkingStatus.textContent = `Создано: ${summary.created}, пропущено: ${summary.skipped}, ошибок: ${summary.errors}`;
+      } catch (err) {
+        this.refs.finalMarkingStatus.textContent = `Ошибка: ${err.message}`;
+        this.updateFinalApplyState();
       }
     });
   }

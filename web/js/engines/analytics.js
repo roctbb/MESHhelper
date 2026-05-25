@@ -285,6 +285,7 @@ export function buildSubjectRows(rows, trimesterLabels, trimesterBoundaries) {
     const isFinalYear = row.markType === 'final_year' && Number.isFinite(Number(row.numericMark));
     const isFinalTrim = row.markType === 'final_trimester' && Number.isFinite(Number(row.numericMark));
     const finalLabel = canonicalTrimesterLabel(row.trimesterLabel || row.period, trimesterBoundaries);
+    if (row.markType === 'final_intermediate') return;
 
     if (isFinalYear) {
       item.explicitYearMark = Number(row.numericMark);
@@ -562,16 +563,27 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
   }
 
   const scheduleMap = new Map();
+  const trimesterPeriodIds = {};
+  const trimesterPeriodIdsBySchedule = new Map();
   const uniqueScheduleIds = [...new Set(groups.map((g) => g.attestationScheduleId).filter(Number.isFinite))];
   statusCb('Получаем расписание аттестационных периодов...');
   await parallelMap(uniqueScheduleIds, 4, async (sid) => {
     try {
       const schedule = await meshApi(`/api/ej/core/teacher/v1/attestation_periods_schedules/${sid}`);
       const periods = Array.isArray(schedule?.periods) ? schedule.periods : [];
+      const scheduleTrimesterPeriodIds = {};
       periods.forEach((p) => {
         const id = Number(p.id);
-        if (Number.isFinite(id)) scheduleMap.set(id, norm(p.name));
+        if (!Number.isFinite(id)) return;
+        const periodName = norm(p.name);
+        scheduleMap.set(id, periodName);
+        const trimesterLabel = canonicalTrimesterLabel(periodName, config.trimesterBoundaries || []);
+        if (trimesterLabel) {
+          if (!trimesterPeriodIds[trimesterLabel]) trimesterPeriodIds[trimesterLabel] = id;
+          scheduleTrimesterPeriodIds[trimesterLabel] = id;
+        }
       });
+      trimesterPeriodIdsBySchedule.set(sid, scheduleTrimesterPeriodIds);
     } catch (_) {
     }
   });
@@ -631,6 +643,7 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
         comment: norm(item.comment),
         weight: Number.isFinite(Number(item.weight)) && Number(item.weight) > 0 ? Number(item.weight) : 1,
         date: ruDate,
+        trimesterPeriodIds: trimesterPeriodIdsBySchedule.get(group.attestationScheduleId) || trimesterPeriodIds,
         sourceFile: 'api'
       });
     });
@@ -680,6 +693,7 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
           comment: '',
           weight: 1,
           date: ruDate,
+          trimesterPeriodIds: trimesterPeriodIdsBySchedule.get(group.attestationScheduleId) || trimesterPeriodIds,
           sourceFile: 'api'
         });
       });
@@ -710,11 +724,15 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
 
       const subjectGroup = groupBySubject.get(subjectId);
       const isYear = Boolean(fm.is_year_mark || fm.year_mark);
+      const finalMarkType = norm(fm.mark_type);
+      const isIntermediate = finalMarkType === 'intermediate_attestation';
       const rawPeriodLabel = Number.isFinite(periodId) ? (scheduleMap.get(periodId) || '') : pickFinalPeriodLabel(fm);
       const trimesterLabel = isYear
         ? 'Год'
-        : canonicalTrimesterLabel(rawPeriodLabel, config.trimesterBoundaries || []);
-      if (!isYear && !trimesterLabel) continue;
+        : isIntermediate
+          ? 'Промежуточная аттестация'
+          : canonicalTrimesterLabel(rawPeriodLabel, config.trimesterBoundaries || []);
+      if (!isYear && !isIntermediate && !trimesterLabel) continue;
 
       rows.push({
         student,
@@ -723,7 +741,7 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
         day: '',
         period: trimesterLabel,
         mark: String(Math.round(numeric)),
-        markType: isYear ? 'final_year' : 'final_trimester',
+        markType: isYear ? 'final_year' : isIntermediate ? 'final_intermediate' : 'final_trimester',
         numericMark: Number(numeric),
         studentProfileId,
         groupId: subjectGroup ? subjectGroup.id : null,
@@ -735,6 +753,11 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
         weight: 1,
         date: '',
         trimesterLabel,
+        attestationPeriodId: Number.isFinite(periodId) ? periodId : null,
+        trimesterPeriodIds: subjectGroup
+          ? (trimesterPeriodIdsBySchedule.get(subjectGroup.attestationScheduleId) || trimesterPeriodIds)
+          : trimesterPeriodIds,
+        finalMarkType: isYear ? 'year' : finalMarkType || null,
         sourceFile: 'api'
       });
     }
@@ -758,7 +781,9 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
     classOptions,
     selectedClassUnitId,
     selectedClassUnitIds,
+    academicYearId,
     currentTrimester,
-    trimesterLabels
+    trimesterLabels,
+    trimesterPeriodIds
   };
 }

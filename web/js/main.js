@@ -16,7 +16,7 @@ import { ModeScreen } from './components/ModeScreen.js';
 import { AnalyticsScreen } from './components/AnalyticsScreen.js';
 import { MarkingScreen } from './components/MarkingScreen.js';
 import { loadAnalyticsData } from './engines/analytics.js';
-import { loadGroupsForMarking, loadControlFormsForMarking, buildMarkingPreview, applyMarkingPreview, buildFinalMarksPreview } from './engines/marking.js';
+import { loadGroupsForMarking, loadControlFormsForMarking, buildMarkingPreview, applyMarkingPreview, buildFinalMarksPreview, applyFinalMarksPreview } from './engines/marking.js';
 
 const state = {
   config: null,
@@ -30,6 +30,8 @@ const state = {
     studentCards: [],
     trimesterLabels: ['1 триместр', '2 триместр', '3 триместр'],
     currentTrimester: '1 триместр',
+    trimesterPeriodIds: {},
+    academicYearId: null,
     selectedStudent: '',
     classOptions: [],
     selectedClassUnitId: '__all__'
@@ -118,6 +120,7 @@ const refs = {
   markingStatus: document.getElementById('markingStatus'),
   previewTableBody: document.getElementById('previewTableBody'),
   finalPreviewBtn: document.getElementById('finalPreviewBtn'),
+  finalApplyBtn: document.getElementById('finalApplyBtn'),
   finalMarkingStatus: document.getElementById('finalMarkingStatus'),
   finalPreviewTableBody: document.getElementById('finalPreviewTableBody')
 };
@@ -261,7 +264,8 @@ const markingScreen = new MarkingScreen(refs, state, {
     return applyMarkingPreview({ meshApi: api.meshApi, auth: state.auth, preview });
   },
   previewFinals: async () => {
-    if (!state.analytics.loaded && !state.analytics.loading) {
+    const missingFinalPeriodContext = !Object.keys(state.analytics.trimesterPeriodIds || {}).length;
+    if ((!state.analytics.loaded || missingFinalPeriodContext) && !state.analytics.loading) {
       state.analytics.loading = true;
       try {
         refs.finalMarkingStatus.textContent = 'Загружаем данные аналитики...';
@@ -281,6 +285,8 @@ const markingScreen = new MarkingScreen(refs, state, {
         state.analytics.selectedClassUnitId = data.selectedClassUnitId;
         state.analytics.currentTrimester = data.currentTrimester;
         state.analytics.trimesterLabels = data.trimesterLabels;
+        state.analytics.trimesterPeriodIds = data.trimesterPeriodIds || {};
+        state.analytics.academicYearId = data.academicYearId;
         state.analytics.loaded = true;
       } finally {
         state.analytics.loading = false;
@@ -290,8 +296,13 @@ const markingScreen = new MarkingScreen(refs, state, {
     return buildFinalMarksPreview({
       byStudent: state.analytics.byStudent,
       trimesterLabels: state.analytics.trimesterLabels,
-      trimesterBoundaries: state.config.trimesterBoundaries || []
+      trimesterBoundaries: state.config.trimesterBoundaries || [],
+      trimesterPeriodIds: state.analytics.trimesterPeriodIds || {},
+      academicYearId: state.analytics.academicYearId || state.config.academicYearId
     });
+  },
+  applyFinals: async (preview) => {
+    return applyFinalMarksPreview({ meshApi: api.meshApi, preview });
   }
 });
 
@@ -318,6 +329,8 @@ async function openAnalytics() {
       state.analytics.selectedClassUnitId = data.selectedClassUnitId;
       state.analytics.currentTrimester = data.currentTrimester;
       state.analytics.trimesterLabels = data.trimesterLabels;
+      state.analytics.trimesterPeriodIds = data.trimesterPeriodIds || {};
+      state.analytics.academicYearId = data.academicYearId;
       state.analytics.loaded = true;
     } finally {
       state.analytics.loading = false;
