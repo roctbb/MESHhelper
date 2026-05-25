@@ -14,32 +14,26 @@ export class FinalMarksScreen {
     return 'text-bg-danger';
   }
 
-  renderClassOptions() {
-    this.refs.finalClassSelect.innerHTML = '';
-    const options = this.state.finalMarks.classOptions || [];
-    options.forEach((c) => {
+  renderGroupOptions() {
+    this.refs.finalGroupSelect.innerHTML = '';
+    const options = this.state.finalMarks.groups || [];
+    options.forEach((g) => {
       const opt = document.createElement('option');
-      opt.value = String(c.id);
-      opt.textContent = c.name;
-      this.refs.finalClassSelect.appendChild(opt);
+      opt.value = String(g.id);
+      const subject = g.subjectName || g.name || `Группа ${g.id}`;
+      const className = g.classUnitName || '';
+      opt.textContent = className ? `${subject} ${className}` : subject;
+      this.refs.finalGroupSelect.appendChild(opt);
     });
 
     if (!options.length) {
-      this.refs.finalClassSelect.innerHTML = '<option value="">Нет классов</option>';
+      this.refs.finalGroupSelect.innerHTML = '<option value="">Нет групп</option>';
       return;
     }
 
-    const selected = this.state.finalMarks.selectedClassUnitId || String(options[0].id);
-    this.refs.finalClassSelect.value = options.some((x) => String(x.id) === selected) ? selected : String(options[0].id);
-    this.state.finalMarks.selectedClassUnitId = this.refs.finalClassSelect.value;
-
-    const envClassUnitIds = Array.isArray(this.state.config.analyticsClassUnitIds)
-      ? this.state.config.analyticsClassUnitIds.map((x) => Number(x)).filter(Number.isFinite)
-      : [];
-    this.refs.finalClassSelect.disabled = envClassUnitIds.length > 0;
-    this.refs.finalClassSelect.title = envClassUnitIds.length > 0
-      ? `Фиксировано через API_CLASS_UNIT_IDS: ${envClassUnitIds.join(',')}`
-      : '';
+    const selected = this.state.finalMarks.selectedGroupId || String(options[0].id);
+    this.refs.finalGroupSelect.value = options.some((x) => String(x.id) === selected) ? selected : String(options[0].id);
+    this.state.finalMarks.selectedGroupId = this.refs.finalGroupSelect.value;
   }
 
   selectedPeriodTypes() {
@@ -95,8 +89,8 @@ export class FinalMarksScreen {
   }
 
   bind() {
-    this.refs.finalClassSelect.addEventListener('change', () => {
-      this.state.finalMarks.selectedClassUnitId = String(this.refs.finalClassSelect.value || '');
+    this.refs.finalGroupSelect.addEventListener('change', () => {
+      this.state.finalMarks.selectedGroupId = String(this.refs.finalGroupSelect.value || '');
       this.resetPreview();
     });
 
@@ -115,7 +109,7 @@ export class FinalMarksScreen {
         this.refs.finalMarkingStatus.textContent = 'Готовим предпросмотр итоговых...';
         this.refs.finalApplyBtn.disabled = true;
         const preview = await this.callbacks.preview({
-          classUnitId: this.refs.finalClassSelect.value,
+          groupId: this.refs.finalGroupSelect.value,
           selectedPeriodTypes: this.selectedPeriodTypes()
         });
         this.state.finalMarks.preview = preview;

@@ -8,6 +8,7 @@ function mapGroup(g) {
     subjectName: norm(g.subject_name),
     subjectId: Number(g.subject_id),
     classLevelId: Number(g.class_level_id),
+    classUnitName: norm(g.class_unit_name),
     classUnitIds: Array.isArray(g.class_unit_ids) ? g.class_unit_ids.map((x) => Number(x)).filter(Number.isFinite) : [],
     studentCount: Number(g.student_count || 0)
   };

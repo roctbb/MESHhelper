@@ -532,14 +532,49 @@ export function buildStudentCard(name, rows, currentTrimester, trimesterLabels, 
   };
 }
 
-export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, savedClassFilter, statusCb }) {
-  const {
-    groups,
-    academicYearId,
-    classOptions,
-    selectedClassUnitId,
-    selectedClassUnitIds
-  } = await loadGroupsForAnalytics({ meshApi, fetchPaged, config, auth, savedClassFilter, statusCb });
+export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, savedClassFilter, groupIds, statusCb }) {
+  let groups;
+  let academicYearId;
+  let classOptions;
+  let selectedClassUnitId;
+  let selectedClassUnitIds;
+
+  const explicitGroupIds = (Array.isArray(groupIds) ? groupIds : [])
+    .map((x) => Number(x))
+    .filter(Number.isFinite);
+
+  if (explicitGroupIds.length) {
+    statusCb(`Получаем выбранные группы (${explicitGroupIds.length})...`);
+    const teacher = await meshApi(`/api/ej/core/teacher/v1/teacher_profiles/${auth.profileId}`, {
+      query: { with_assigned_groups: true, with_replacement_groups: true }
+    });
+    const schoolId = Number(config.schoolId) || Number(teacher?.school_id) || 0;
+    academicYearId = Number(config.academicYearId) || 13;
+    const groupsRaw = await fetchGroupsByIds(fetchPaged, explicitGroupIds, schoolId, academicYearId, config.groupsPerPage, statusCb);
+    groups = groupsRaw
+      .filter((g) => !g.is_metagroup)
+      .filter((g) => Number(g.student_count || 0) > 0)
+      .map(mapGroup);
+
+    const classOptionMap = new Map();
+    groups.forEach((g) => {
+      g.classUnitIds.forEach((id) => {
+        if (!classOptionMap.has(id)) classOptionMap.set(id, g.classUnitName || `Класс ${id}`);
+      });
+      if (Number.isFinite(Number(g.classUnitId))) classOptionMap.set(Number(g.classUnitId), g.classUnitName || `Класс ${g.classUnitId}`);
+    });
+    classOptions = [...classOptionMap.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
+    selectedClassUnitIds = [...classOptionMap.keys()].map(Number).filter(Number.isFinite);
+    selectedClassUnitId = selectedClassUnitIds.length === 1 ? String(selectedClassUnitIds[0]) : '__all__';
+  } else {
+    ({
+      groups,
+      academicYearId,
+      classOptions,
+      selectedClassUnitId,
+      selectedClassUnitIds
+    } = await loadGroupsForAnalytics({ meshApi, fetchPaged, config, auth, savedClassFilter, statusCb }));
+  }
   if (!groups.length) throw new Error('Нет доступных групп для аналитики');
 
   statusCb(`Получаем список учеников (${selectedClassUnitIds.length} классов)...`);

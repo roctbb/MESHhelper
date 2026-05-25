@@ -50,8 +50,8 @@ const state = {
   },
   finalMarks: {
     loading: false,
-    classOptions: [],
-    selectedClassUnitId: '',
+    groups: [],
+    selectedGroupId: '',
     preview: null
   },
   ui: {
@@ -131,7 +131,7 @@ const refs = {
   finalMarksLoader: document.getElementById('finalMarksLoader'),
   finalMarksLoaderText: document.getElementById('finalMarksLoaderText'),
   finalMarksContent: document.getElementById('finalMarksContent'),
-  finalClassSelect: document.getElementById('finalClassSelect'),
+  finalGroupSelect: document.getElementById('finalGroupSelect'),
   finalT1Check: document.getElementById('finalT1Check'),
   finalT2Check: document.getElementById('finalT2Check'),
   finalT3Check: document.getElementById('finalT3Check'),
@@ -187,13 +187,6 @@ function applyAnalyticsData(data) {
   state.analytics.academicYearId = data.academicYearId;
   state.analytics.loaded = true;
 
-  state.finalMarks.classOptions = data.classOptions || state.finalMarks.classOptions;
-  if (!state.finalMarks.selectedClassUnitId) {
-    const firstClass = state.finalMarks.classOptions?.[0]?.id;
-    state.finalMarks.selectedClassUnitId = data.selectedClassUnitId !== '__all__'
-      ? data.selectedClassUnitId
-      : (firstClass ? String(firstClass) : '');
-  }
 }
 
 const authScreen = new AuthScreen(refs, {
@@ -207,7 +200,7 @@ const authScreen = new AuthScreen(refs, {
 
     state.analytics.loaded = false;
     state.marking.loaded = false;
-    state.finalMarks.classOptions = [];
+    state.finalMarks.groups = [];
     state.finalMarks.preview = null;
     location.hash = '#mode';
   }
@@ -309,16 +302,22 @@ const markingScreen = new MarkingScreen(refs, state, {
 });
 
 const finalMarksScreen = new FinalMarksScreen(refs, state, {
-  preview: async ({ classUnitId, selectedPeriodTypes }) => {
-    const cid = String(classUnitId || '');
-    if (!cid) throw new Error('Выберите класс');
+  preview: async ({ groupId, selectedPeriodTypes }) => {
+    const gid = Number(groupId);
+    if (!Number.isFinite(gid)) throw new Error('Выберите группу');
     const selectedCount = Number(selectedPeriodTypes?.trimesters?.length || 0)
       + (selectedPeriodTypes?.intermediate ? 1 : 0)
       + (selectedPeriodTypes?.year ? 1 : 0);
     if (selectedCount <= 0) throw new Error('Выберите хотя бы один тип отметок');
 
     const missingFinalPeriodContext = !Object.keys(state.analytics.trimesterPeriodIds || {}).length;
-    const needsLoad = !state.analytics.loaded || state.analytics.selectedClassUnitId !== cid || missingFinalPeriodContext;
+    const currentGroupIds = new Set(
+      Object.values(state.analytics.byStudent || {})
+        .flat()
+        .map((row) => Number(row.groupId))
+        .filter(Number.isFinite)
+    );
+    const needsLoad = !state.analytics.loaded || !currentGroupIds.has(gid) || currentGroupIds.size !== 1 || missingFinalPeriodContext;
     if (needsLoad && !state.analytics.loading) {
       state.analytics.loading = true;
       try {
@@ -327,7 +326,7 @@ const finalMarksScreen = new FinalMarksScreen(refs, state, {
           fetchPaged: api.fetchPaged,
           config: state.config,
           auth: state.auth,
-          savedClassFilter: cid,
+          groupIds: [gid],
           statusCb: (text) => { refs.finalMarkingStatus.textContent = text; }
         });
         applyAnalyticsData(data);
@@ -412,18 +411,18 @@ async function openFinalMarks() {
   refs.finalMarksLoader.style.display = '';
   refs.finalMarksContent.style.display = 'none';
 
-  if (!state.finalMarks.classOptions.length && !state.finalMarks.loading) {
+  if (!state.finalMarks.groups.length && !state.finalMarks.loading) {
     state.finalMarks.loading = true;
     try {
-      const data = await loadAnalyticsData({
+      const { groups } = await loadGroupsForMarking({
         meshApi: api.meshApi,
         fetchPaged: api.fetchPaged,
         config: state.config,
         auth: state.auth,
-        savedClassFilter: loadClassFilter(),
         statusCb: (text) => { refs.finalMarksLoaderText.textContent = text; }
       });
-      applyAnalyticsData(data);
+      state.finalMarks.groups = groups;
+      if (!state.finalMarks.selectedGroupId && groups[0]) state.finalMarks.selectedGroupId = String(groups[0].id);
     } finally {
       state.finalMarks.loading = false;
     }
@@ -431,7 +430,7 @@ async function openFinalMarks() {
 
   refs.finalMarksLoader.style.display = 'none';
   refs.finalMarksContent.style.display = '';
-  finalMarksScreen.renderClassOptions();
+  finalMarksScreen.renderGroupOptions();
 }
 
 async function renderRoute() {
@@ -499,7 +498,7 @@ refs.logoutBtn.addEventListener('click', () => {
   state.auth = null;
   state.analytics.loaded = false;
   state.marking.loaded = false;
-  state.finalMarks.classOptions = [];
+  state.finalMarks.groups = [];
   state.finalMarks.preview = null;
   authScreen.fill({ roleId: '9', hostId: '9', aid: '13' });
   location.hash = '#auth';
