@@ -551,7 +551,16 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
     const schoolId = Number(config.schoolId) || Number(teacher?.school_id) || 0;
     academicYearId = Number(config.academicYearId) || 13;
     const groupsRaw = await fetchGroupsByIds(fetchPaged, explicitGroupIds, schoolId, academicYearId, config.groupsPerPage, statusCb);
-    groups = groupsRaw
+    statusCb(`Уточняем выбранные группы (${groupsRaw.length})...`);
+    const detailedGroupsRaw = await parallelMap(groupsRaw, 4, async (g) => {
+      try {
+        return await meshApi(`/api/ej/plan/teacher/v1/groups/${g.id}`);
+      } catch (err) {
+        console.warn('[MESHhelper] Failed to load group details', g.id, err);
+        return g;
+      }
+    });
+    groups = detailedGroupsRaw
       .filter((g) => !g.is_metagroup)
       .filter((g) => Number(g.student_count || 0) > 0)
       .map(mapGroup);
@@ -582,7 +591,7 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
     : `Получаем список учеников (${selectedClassUnitIds.length} классов)...`);
   const studentProfilesQuery = {
     academic_year_id: academicYearId,
-    class_unit_ids: explicitGroupIds.length ? '' : selectedClassUnitIds.join(','),
+    class_unit_ids: selectedClassUnitIds.join(','),
     group_ids: explicitGroupIds.length ? explicitGroupIds.join(',') : '',
     with_groups: true,
     with_home_based_periods: true,
