@@ -182,16 +182,22 @@
     <h2 class="h5 fw-bold mb-2">Выберите режим</h2>
     <p class="small-muted mb-3">Режимы загружают данные по API с текущим токеном.</p>
     <div class="row g-3">
-      <div class="col-md-6">
+      <div class="col-md-4">
         <button id="openAnalyticsModeBtn" class="mode-card w-100">
           <div class="h5 mb-1 fw-bold">Аналитика</div>
           <div class="small-muted">Сводка по ученикам, предметам, триместрам и рискам.</div>
         </button>
       </div>
-      <div class="col-md-6">
+      <div class="col-md-4">
         <button id="openMarkingModeBtn" class="mode-card w-100">
           <div class="h5 mb-1 fw-bold">Проставить отметки</div>
           <div class="small-muted">Выбор группы, предпросмотр и массовая отправка отметок.</div>
+        </button>
+      </div>
+      <div class="col-md-4">
+        <button id="openFinalMarksModeBtn" class="mode-card w-100">
+          <div class="h5 mb-1 fw-bold">Итоговые отметки</div>
+          <div class="small-muted">Триместры, промежуточная аттестация и годовые через предпросмотр.</div>
         </button>
       </div>
     </div>
@@ -363,17 +369,57 @@
         </div>
       </section>
 
-      <section class="panel p-3 mt-3">
-        <div class="d-flex justify-content-between align-items-center gap-2 flex-wrap mb-2">
-          <h3 class="h6 fw-bold mb-0">Итоговые отметки</h3>
-          <div class="d-flex gap-2 align-items-center">
-            <button id="finalPreviewBtn" class="btn btn-primary btn-sm">Предпросмотр итоговых</button>
-            <button id="finalApplyBtn" class="btn btn-success btn-sm" disabled>Применить итоговые</button>
+    </div>
+  </section>
+
+  <section id="finalMarksScreen" class="screen">
+    <div id="finalMarksLoader" class="panel spinner-wrap">
+      <div class="spinner-border text-primary" role="status"></div>
+      <div id="finalMarksLoaderText" class="small-muted">Загрузка классов...</div>
+    </div>
+
+    <div id="finalMarksContent" style="display:none">
+      <section class="panel p-3">
+        <div class="row g-3 align-items-end">
+          <div class="col-lg-4">
+            <label class="form-label">Класс</label>
+            <select id="finalClassSelect" class="form-select form-select-sm"></select>
+          </div>
+          <div class="col-lg-5">
+            <label class="form-label">Отметки</label>
+            <div class="d-flex flex-wrap gap-3">
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="finalT1Check" checked/>
+                <label class="form-check-label small" for="finalT1Check">1 триместр</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="finalT2Check" checked/>
+                <label class="form-check-label small" for="finalT2Check">2 триместр</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="finalT3Check" checked/>
+                <label class="form-check-label small" for="finalT3Check">3 триместр</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="finalIntermediateCheck" checked/>
+                <label class="form-check-label small" for="finalIntermediateCheck">ПА</label>
+              </div>
+              <div class="form-check">
+                <input class="form-check-input" type="checkbox" id="finalYearCheck" checked/>
+                <label class="form-check-label small" for="finalYearCheck">Год</label>
+              </div>
+            </div>
+          </div>
+          <div class="col-lg-3 d-flex gap-2">
+            <button id="finalPreviewBtn" class="btn btn-primary btn-sm">Предпросмотр</button>
+            <button id="finalApplyBtn" class="btn btn-success btn-sm" disabled>Выставить</button>
+          </div>
+          <div class="col-12">
             <span id="finalMarkingStatus" class="small-muted"></span>
           </div>
         </div>
 
-        <div class="table-responsive">
+        <div class="table-responsive mt-3">
           <table class="table table-sm align-middle mb-0">
             <thead>
             <tr>

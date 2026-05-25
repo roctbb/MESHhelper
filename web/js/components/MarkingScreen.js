@@ -9,7 +9,6 @@ export class MarkingScreen {
 
   statusBadge(status) {
     if (status === 'ready' || status === 'created') return 'text-bg-success';
-    if (status === 'skip_same') return 'text-bg-primary';
     if (String(status).startsWith('skip')) return 'text-bg-secondary';
     return 'text-bg-danger';
   }
@@ -96,37 +95,6 @@ export class MarkingScreen {
     });
   }
 
-  renderFinalPreviewRows(rows) {
-    this.refs.finalPreviewTableBody.innerHTML = '';
-    if (!rows.length) {
-      this.refs.finalPreviewTableBody.innerHTML = '<tr><td colspan="8" class="text-secondary p-3">Нет строк</td></tr>';
-      return;
-    }
-
-    rows.forEach((r) => {
-      const tr = document.createElement('tr');
-      const avg = Number.isFinite(Number(r.calculatedAverage)) ? Number(r.calculatedAverage).toFixed(2) : '—';
-      const existing = Number.isFinite(Number(r.existingGrade)) ? Math.round(Number(r.existingGrade)) : '—';
-      const desired = Number.isFinite(Number(r.desiredGrade)) ? Math.round(Number(r.desiredGrade)) : '—';
-      tr.innerHTML = `
-        <td>${r.line || ''}</td>
-        <td>${escapeHtml(r.studentName || '—')}</td>
-        <td>${escapeHtml(r.subject || '—')}</td>
-        <td>${escapeHtml(r.periodLabel || '—')}</td>
-        <td class="text-center">${avg}</td>
-        <td class="text-center">${existing}</td>
-        <td class="text-center">${desired}</td>
-        <td><span class="badge ${this.statusBadge(r.status)}">${escapeHtml(r.status || '')}</span> ${escapeHtml(r.reason || '')}</td>
-      `;
-      this.refs.finalPreviewTableBody.appendChild(tr);
-    });
-  }
-
-  updateFinalApplyState() {
-    const rows = this.state.marking.finalPreview?.rows || [];
-    this.refs.finalApplyBtn.disabled = !rows.some((row) => row.status === 'ready');
-  }
-
   bind() {
     this.refs.groupSelect.addEventListener('change', () => {
       this.loadControlFormsForSelectedGroup().catch((err) => {
@@ -189,42 +157,5 @@ export class MarkingScreen {
       }
     });
 
-    this.refs.finalPreviewBtn.addEventListener('click', async () => {
-      try {
-        this.refs.finalMarkingStatus.textContent = 'Готовим предпросмотр итоговых...';
-        this.refs.finalApplyBtn.disabled = true;
-        const preview = await this.callbacks.previewFinals();
-        this.state.marking.finalPreview = preview;
-        this.renderFinalPreviewRows(preview.rows || []);
-
-        const s = preview.summary || {};
-        this.refs.finalMarkingStatus.textContent = `К изменению: ${s.ready || 0}, уже совпадают: ${s.same || 0}, пропуски: ${s.skipped || 0}, ошибки: ${s.errors || 0}`;
-        this.updateFinalApplyState();
-      } catch (err) {
-        this.refs.finalMarkingStatus.textContent = `Ошибка: ${err.message}`;
-        this.state.marking.finalPreview = null;
-        this.refs.finalApplyBtn.disabled = true;
-      }
-    });
-
-    this.refs.finalApplyBtn.addEventListener('click', async () => {
-      if (!this.state.marking.finalPreview) return;
-      try {
-        this.refs.finalMarkingStatus.textContent = 'Отправляем итоговые отметки...';
-        this.refs.finalApplyBtn.disabled = true;
-        const results = await this.callbacks.applyFinals(this.state.marking.finalPreview);
-        this.state.marking.finalPreview = { ...this.state.marking.finalPreview, rows: results };
-        this.renderFinalPreviewRows(results);
-        const summary = {
-          created: results.filter((x) => x.status === 'created').length,
-          skipped: results.filter((x) => String(x.status).startsWith('skip')).length,
-          errors: results.filter((x) => x.status === 'error').length
-        };
-        this.refs.finalMarkingStatus.textContent = `Создано: ${summary.created}, пропущено: ${summary.skipped}, ошибок: ${summary.errors}`;
-      } catch (err) {
-        this.refs.finalMarkingStatus.textContent = `Ошибка: ${err.message}`;
-        this.updateFinalApplyState();
-      }
-    });
   }
 }

@@ -15,6 +15,7 @@ import { AuthScreen } from './components/AuthScreen.js';
 import { ModeScreen } from './components/ModeScreen.js';
 import { AnalyticsScreen } from './components/AnalyticsScreen.js';
 import { MarkingScreen } from './components/MarkingScreen.js';
+import { FinalMarksScreen } from './components/FinalMarksScreen.js';
 import { loadAnalyticsData } from './engines/analytics.js';
 import { loadGroupsForMarking, loadControlFormsForMarking, buildMarkingPreview, applyMarkingPreview, buildFinalMarksPreview, applyFinalMarksPreview } from './engines/marking.js';
 
@@ -45,8 +46,13 @@ const state = {
     selectedControlFormId: '',
     selectedControlFormLabel: '',
     comment: '',
-    preview: null,
-    finalPreview: null
+    preview: null
+  },
+  finalMarks: {
+    loading: false,
+    classOptions: [],
+    selectedClassUnitId: '',
+    preview: null
   },
   ui: {
     search: '',
@@ -62,6 +68,7 @@ const refs = {
   modeScreen: document.getElementById('modeScreen'),
   analyticsScreen: document.getElementById('analyticsScreen'),
   markingScreen: document.getElementById('markingScreen'),
+  finalMarksScreen: document.getElementById('finalMarksScreen'),
   backBtn: document.getElementById('backBtn'),
   logoutBtn: document.getElementById('logoutBtn'),
 
@@ -75,6 +82,7 @@ const refs = {
 
   openAnalyticsModeBtn: document.getElementById('openAnalyticsModeBtn'),
   openMarkingModeBtn: document.getElementById('openMarkingModeBtn'),
+  openFinalMarksModeBtn: document.getElementById('openFinalMarksModeBtn'),
 
   analyticsLoader: document.getElementById('analyticsLoader'),
   analyticsLoaderText: document.getElementById('analyticsLoaderText'),
@@ -119,6 +127,16 @@ const refs = {
   applyBtn: document.getElementById('applyBtn'),
   markingStatus: document.getElementById('markingStatus'),
   previewTableBody: document.getElementById('previewTableBody'),
+
+  finalMarksLoader: document.getElementById('finalMarksLoader'),
+  finalMarksLoaderText: document.getElementById('finalMarksLoaderText'),
+  finalMarksContent: document.getElementById('finalMarksContent'),
+  finalClassSelect: document.getElementById('finalClassSelect'),
+  finalT1Check: document.getElementById('finalT1Check'),
+  finalT2Check: document.getElementById('finalT2Check'),
+  finalT3Check: document.getElementById('finalT3Check'),
+  finalIntermediateCheck: document.getElementById('finalIntermediateCheck'),
+  finalYearCheck: document.getElementById('finalYearCheck'),
   finalPreviewBtn: document.getElementById('finalPreviewBtn'),
   finalApplyBtn: document.getElementById('finalApplyBtn'),
   finalMarkingStatus: document.getElementById('finalMarkingStatus'),
@@ -130,7 +148,8 @@ function setScreen(name) {
     auth: refs.authScreen,
     mode: refs.modeScreen,
     analytics: refs.analyticsScreen,
-    marking: refs.markingScreen
+    marking: refs.markingScreen,
+    finalMarks: refs.finalMarksScreen
   };
   Object.values(map).forEach((el) => el.classList.remove('active'));
   if (map[name]) map[name].classList.add('active');
@@ -156,6 +175,27 @@ const api = createApiClient({
   onAuthError
 });
 
+function applyAnalyticsData(data) {
+  state.analytics.students = data.students;
+  state.analytics.byStudent = data.byStudent;
+  state.analytics.studentCards = data.studentCards;
+  state.analytics.classOptions = data.classOptions;
+  state.analytics.selectedClassUnitId = data.selectedClassUnitId;
+  state.analytics.currentTrimester = data.currentTrimester;
+  state.analytics.trimesterLabels = data.trimesterLabels;
+  state.analytics.trimesterPeriodIds = data.trimesterPeriodIds || {};
+  state.analytics.academicYearId = data.academicYearId;
+  state.analytics.loaded = true;
+
+  state.finalMarks.classOptions = data.classOptions || state.finalMarks.classOptions;
+  if (!state.finalMarks.selectedClassUnitId) {
+    const firstClass = state.finalMarks.classOptions?.[0]?.id;
+    state.finalMarks.selectedClassUnitId = data.selectedClassUnitId !== '__all__'
+      ? data.selectedClassUnitId
+      : (firstClass ? String(firstClass) : '');
+  }
+}
+
 const authScreen = new AuthScreen(refs, {
   onSave: async (auth) => {
     saveAuth(auth);
@@ -167,13 +207,16 @@ const authScreen = new AuthScreen(refs, {
 
     state.analytics.loaded = false;
     state.marking.loaded = false;
+    state.finalMarks.classOptions = [];
+    state.finalMarks.preview = null;
     location.hash = '#mode';
   }
 });
 
 const modeScreen = new ModeScreen(refs, {
   onOpenAnalytics: () => { location.hash = '#analytics'; },
-  onOpenMarking: () => { location.hash = '#marking'; }
+  onOpenMarking: () => { location.hash = '#marking'; },
+  onOpenFinalMarks: () => { location.hash = '#final-marks'; }
 });
 
 const analyticsScreen = new AnalyticsScreen(refs, state, {
@@ -262,32 +305,32 @@ const markingScreen = new MarkingScreen(refs, state, {
   },
   apply: async (preview) => {
     return applyMarkingPreview({ meshApi: api.meshApi, auth: state.auth, preview });
-  },
-  previewFinals: async () => {
+  }
+});
+
+const finalMarksScreen = new FinalMarksScreen(refs, state, {
+  preview: async ({ classUnitId, selectedPeriodTypes }) => {
+    const cid = String(classUnitId || '');
+    if (!cid) throw new Error('Выберите класс');
+    const selectedCount = Number(selectedPeriodTypes?.trimesters?.length || 0)
+      + (selectedPeriodTypes?.intermediate ? 1 : 0)
+      + (selectedPeriodTypes?.year ? 1 : 0);
+    if (selectedCount <= 0) throw new Error('Выберите хотя бы один тип отметок');
+
     const missingFinalPeriodContext = !Object.keys(state.analytics.trimesterPeriodIds || {}).length;
-    if ((!state.analytics.loaded || missingFinalPeriodContext) && !state.analytics.loading) {
+    const needsLoad = !state.analytics.loaded || state.analytics.selectedClassUnitId !== cid || missingFinalPeriodContext;
+    if (needsLoad && !state.analytics.loading) {
       state.analytics.loading = true;
       try {
-        refs.finalMarkingStatus.textContent = 'Загружаем данные аналитики...';
         const data = await loadAnalyticsData({
           meshApi: api.meshApi,
           fetchPaged: api.fetchPaged,
           config: state.config,
           auth: state.auth,
-          savedClassFilter: loadClassFilter(),
+          savedClassFilter: cid,
           statusCb: (text) => { refs.finalMarkingStatus.textContent = text; }
         });
-
-        state.analytics.students = data.students;
-        state.analytics.byStudent = data.byStudent;
-        state.analytics.studentCards = data.studentCards;
-        state.analytics.classOptions = data.classOptions;
-        state.analytics.selectedClassUnitId = data.selectedClassUnitId;
-        state.analytics.currentTrimester = data.currentTrimester;
-        state.analytics.trimesterLabels = data.trimesterLabels;
-        state.analytics.trimesterPeriodIds = data.trimesterPeriodIds || {};
-        state.analytics.academicYearId = data.academicYearId;
-        state.analytics.loaded = true;
+        applyAnalyticsData(data);
       } finally {
         state.analytics.loading = false;
       }
@@ -298,10 +341,11 @@ const markingScreen = new MarkingScreen(refs, state, {
       trimesterLabels: state.analytics.trimesterLabels,
       trimesterBoundaries: state.config.trimesterBoundaries || [],
       trimesterPeriodIds: state.analytics.trimesterPeriodIds || {},
-      academicYearId: state.analytics.academicYearId || state.config.academicYearId
+      academicYearId: state.analytics.academicYearId || state.config.academicYearId,
+      selectedPeriodTypes
     });
   },
-  applyFinals: async (preview) => {
+  apply: async (preview) => {
     return applyFinalMarksPreview({ meshApi: api.meshApi, preview });
   }
 });
@@ -322,16 +366,7 @@ async function openAnalytics() {
         statusCb: (text) => { refs.analyticsLoaderText.textContent = text; }
       });
 
-      state.analytics.students = data.students;
-      state.analytics.byStudent = data.byStudent;
-      state.analytics.studentCards = data.studentCards;
-      state.analytics.classOptions = data.classOptions;
-      state.analytics.selectedClassUnitId = data.selectedClassUnitId;
-      state.analytics.currentTrimester = data.currentTrimester;
-      state.analytics.trimesterLabels = data.trimesterLabels;
-      state.analytics.trimesterPeriodIds = data.trimesterPeriodIds || {};
-      state.analytics.academicYearId = data.academicYearId;
-      state.analytics.loaded = true;
+      applyAnalyticsData(data);
     } finally {
       state.analytics.loading = false;
     }
@@ -373,6 +408,32 @@ async function openMarking() {
   refs.markingContent.style.display = '';
 }
 
+async function openFinalMarks() {
+  refs.finalMarksLoader.style.display = '';
+  refs.finalMarksContent.style.display = 'none';
+
+  if (!state.finalMarks.classOptions.length && !state.finalMarks.loading) {
+    state.finalMarks.loading = true;
+    try {
+      const data = await loadAnalyticsData({
+        meshApi: api.meshApi,
+        fetchPaged: api.fetchPaged,
+        config: state.config,
+        auth: state.auth,
+        savedClassFilter: loadClassFilter(),
+        statusCb: (text) => { refs.finalMarksLoaderText.textContent = text; }
+      });
+      applyAnalyticsData(data);
+    } finally {
+      state.finalMarks.loading = false;
+    }
+  }
+
+  refs.finalMarksLoader.style.display = 'none';
+  refs.finalMarksContent.style.display = '';
+  finalMarksScreen.renderClassOptions();
+}
+
 async function renderRoute() {
   if (!state.auth) {
     setScreen('auth');
@@ -403,6 +464,12 @@ async function renderRoute() {
     return;
   }
 
+  if (head === 'final-marks') {
+    setScreen('finalMarks');
+    await openFinalMarks();
+    return;
+  }
+
   location.hash = '#mode';
 }
 
@@ -424,7 +491,7 @@ async function init() {
 
 refs.backBtn.addEventListener('click', () => {
   const { head } = parseRoute();
-  if (head === 'analytics' || head === 'marking') location.hash = '#mode';
+  if (head === 'analytics' || head === 'marking' || head === 'final-marks') location.hash = '#mode';
 });
 
 refs.logoutBtn.addEventListener('click', () => {
@@ -432,6 +499,8 @@ refs.logoutBtn.addEventListener('click', () => {
   state.auth = null;
   state.analytics.loaded = false;
   state.marking.loaded = false;
+  state.finalMarks.classOptions = [];
+  state.finalMarks.preview = null;
   authScreen.fill({ roleId: '9', hostId: '9', aid: '13' });
   location.hash = '#auth';
 });
@@ -444,6 +513,7 @@ authScreen.bind();
 modeScreen.bind();
 analyticsScreen.bind();
 markingScreen.bind();
+finalMarksScreen.bind();
 
 init().catch((err) => {
   alert(`Ошибка запуска: ${err.message}`);

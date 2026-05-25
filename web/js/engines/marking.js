@@ -442,9 +442,20 @@ function subjectIds(rows) {
   };
 }
 
-export function buildFinalMarksPreview({ byStudent, trimesterLabels, trimesterBoundaries, trimesterPeriodIds, academicYearId }) {
+export function buildFinalMarksPreview({
+  byStudent,
+  trimesterLabels,
+  trimesterBoundaries,
+  trimesterPeriodIds,
+  academicYearId,
+  selectedPeriodTypes
+}) {
   const out = [];
   let line = 1;
+  const enabled = selectedPeriodTypes || {};
+  const enabledTrimesters = new Set(Array.isArray(enabled.trimesters) ? enabled.trimesters : trimesterLabels || []);
+  const includeYear = enabled.year !== false;
+  const includeIntermediate = enabled.intermediate !== false;
 
   Object.entries(byStudent || {})
     .sort(([a], [b]) => a.localeCompare(b, 'ru'))
@@ -467,19 +478,21 @@ export function buildFinalMarksPreview({ byStudent, trimesterLabels, trimesterBo
             : finalPreviewStatus(desiredGrade, existingGrade, 'Нет реальных отметок за триместр');
           if (Number.isFinite(desiredGrade)) proposedTrimesters.push(desiredGrade);
 
-          out.push({
-            line: line++,
-            ...ids,
-            studentName,
-            subject: subjectRow.subject,
-            periodType: 'trimester',
-            periodLabel: label,
-            attestationPeriodId,
-            calculatedAverage,
-            existingGrade,
-            desiredGrade,
-            ...status
-          });
+          if (enabledTrimesters.has(label)) {
+            out.push({
+              line: line++,
+              ...ids,
+              studentName,
+              subject: subjectRow.subject,
+              periodType: 'trimester',
+              periodLabel: label,
+              attestationPeriodId,
+              calculatedAverage,
+              existingGrade,
+              desiredGrade,
+              ...status
+            });
+          }
         });
 
         const annualGrade = proposedTrimesters.length
@@ -488,33 +501,37 @@ export function buildFinalMarksPreview({ byStudent, trimesterLabels, trimesterBo
         const existingYearGrade = pickExistingYearMark(rawSubjectRows);
         const yearStatus = finalPreviewStatus(annualGrade, existingYearGrade, 'Нет триместровых расчетов');
 
-        out.push({
-          line: line++,
-          ...ids,
-          studentName,
-          subject: subjectRow.subject,
-          periodType: 'year',
-          periodLabel: 'Год',
-          calculatedAverage: null,
-          existingGrade: existingYearGrade,
-          desiredGrade: annualGrade,
-          ...yearStatus
-        });
+        if (includeYear) {
+          out.push({
+            line: line++,
+            ...ids,
+            studentName,
+            subject: subjectRow.subject,
+            periodType: 'year',
+            periodLabel: 'Год',
+            calculatedAverage: null,
+            existingGrade: existingYearGrade,
+            desiredGrade: annualGrade,
+            ...yearStatus
+          });
+        }
 
         const existingIntermediateGrade = pickExistingIntermediateMark(rawSubjectRows);
         const intermediateStatus = finalPreviewStatus(annualGrade, existingIntermediateGrade, 'Нет годовой отметки');
-        out.push({
-          line: line++,
-          ...ids,
-          studentName,
-          subject: subjectRow.subject,
-          periodType: 'intermediate',
-          periodLabel: 'Промежуточная аттестация',
-          calculatedAverage: null,
-          existingGrade: existingIntermediateGrade,
-          desiredGrade: annualGrade,
-          ...intermediateStatus
-        });
+        if (includeIntermediate) {
+          out.push({
+            line: line++,
+            ...ids,
+            studentName,
+            subject: subjectRow.subject,
+            periodType: 'intermediate',
+            periodLabel: 'Промежуточная аттестация',
+            calculatedAverage: null,
+            existingGrade: existingIntermediateGrade,
+            desiredGrade: annualGrade,
+            ...intermediateStatus
+          });
+        }
       });
     });
 
