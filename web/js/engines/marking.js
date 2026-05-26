@@ -494,8 +494,8 @@ export function buildFinalMarksPreview({
           const existingGrade = subjectRow.trimesterFinalRounded?.[label];
           const attestationPeriodId = Number(subjectTrimesterPeriodIds?.[label]) || null;
           const status = Number.isFinite(desiredGrade) && !Number.isFinite(attestationPeriodId)
-            ? { status: 'error', reason: 'Не найден attestation_period_id триместра' }
-            : finalPreviewStatus(desiredGrade, existingGrade, 'Нет реальных отметок за триместр');
+            ? { status: 'error', reason: 'Не найден attestation_period_id периода' }
+            : finalPreviewStatus(desiredGrade, existingGrade, 'Нет реальных отметок за период');
           if (Number.isFinite(desiredGrade)) proposedTrimesters.push(desiredGrade);
 
           if (enabledTrimesters.has(label)) {
@@ -519,7 +519,7 @@ export function buildFinalMarksPreview({
           ? Math.round(proposedTrimesters.reduce((sum, grade) => sum + grade, 0) / proposedTrimesters.length)
           : null;
         const existingYearGrade = pickExistingYearMark(rawSubjectRows);
-        const yearStatus = finalPreviewStatus(annualGrade, existingYearGrade, 'Нет триместровых расчетов');
+        const yearStatus = finalPreviewStatus(annualGrade, existingYearGrade, 'Нет расчетов по периодам');
 
         if (includeYear) {
           out.push({
@@ -620,7 +620,7 @@ function validateFinalRow(preview, row) {
   if (!Number.isFinite(Number(row.subjectId))) return 'Не задан subject_id';
   if (!Number.isFinite(Number(row.desiredGrade))) return 'Нет итоговой отметки';
   if (row.periodType === 'trimester' && !Number.isFinite(Number(row.attestationPeriodId))) {
-    return 'Не найден attestation_period_id триместра';
+    return 'Не найден attestation_period_id периода';
   }
   return '';
 }

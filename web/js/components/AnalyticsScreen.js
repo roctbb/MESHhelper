@@ -311,6 +311,19 @@ export class AnalyticsScreen {
     const isCalculatedMode = gradeMode === 'calculated';
     const controlsWrap = this.refs.viewModeAllBtn?.closest('.d-flex') || null;
     const tableWrap = this.refs.analyticsTableBody?.closest('.table-responsive') || null;
+    const periodLabels = this.state.analytics.trimesterLabels || [];
+    const table = this.refs.analyticsTableBody?.closest('table') || null;
+    const headRow = table?.querySelector('thead tr') || null;
+    const colSpan = 4 + Math.max(1, periodLabels.length);
+    if (headRow) {
+      headRow.innerHTML = `
+        <th>Предмет</th>
+        ${periodLabels.map((label, idx) => `<th class="text-center" title="${escapeHtml(label)}">${idx + 1}</th>`).join('')}
+        <th class="text-center" title="Годовая">Г</th>
+        <th class="text-center" title="Пропуски">Н</th>
+        <th>Отметки по периодам</th>
+      `;
+    }
     this.refs.viewModeAllBtn.className = `btn btn-sm ${isFinalOnly ? 'btn-outline-primary' : 'btn-primary'}`;
     this.refs.viewModeFinalBtn.className = `btn btn-sm ${isFinalOnly ? 'btn-primary' : 'btn-outline-primary'}`;
     this.refs.gradeModeMixedBtn.className = `btn btn-sm ${gradeMode === 'mixed' ? 'btn-primary' : 'btn-outline-primary'}`;
@@ -323,18 +336,17 @@ export class AnalyticsScreen {
       if (tableWrap) tableWrap.style.display = 'none';
       this.refs.analyticsTitle.textContent = 'Сводка по классу';
       this.refs.analyticsStats.textContent = 'Проблемные ученики, сильные тренды и точки ниже.';
-      this.refs.analyticsTableBody.innerHTML = '<tr><td colspan="7" class="text-secondary p-3">Выберите ученика слева.</td></tr>';
+      this.refs.analyticsTableBody.innerHTML = `<tr><td colspan="${colSpan}" class="text-secondary p-3">Выберите ученика слева.</td></tr>`;
       return;
     }
     if (controlsWrap) controlsWrap.style.display = '';
     if (tableWrap) tableWrap.style.display = '';
 
     const rows = this.state.analytics.byStudent[name] || [];
-    let subjectRows = buildSubjectRows(rows, this.state.analytics.trimesterLabels, this.state.config.trimesterBoundaries || []);
+    let subjectRows = buildSubjectRows(rows, periodLabels, this.state.config.trimesterBoundaries || []);
     if (isFinalOnly) {
       subjectRows = subjectRows.filter((r) => {
-        const t = this.state.analytics.trimesterLabels;
-        const hasFinalTrimester = t.some((label) => r.trimesterSource?.[label] === 'final');
+        const hasFinalTrimester = periodLabels.some((label) => r.trimesterSource?.[label] === 'final');
         return hasFinalTrimester || r.yearSource === 'final';
       });
     }
@@ -349,7 +361,7 @@ export class AnalyticsScreen {
     this.refs.analyticsStats.textContent = `Предметов: ${subjectRows.length}, записей: ${rows.length}, пропусков: ${absences}, текущий: ${this.state.analytics.currentTrimester}, режим: ${gradeModeLabel}`;
 
     if (!subjectRows.length) {
-      this.refs.analyticsTableBody.innerHTML = '<tr><td colspan="7" class="text-secondary p-3">Нет данных по ученику.</td></tr>';
+      this.refs.analyticsTableBody.innerHTML = `<tr><td colspan="${colSpan}" class="text-secondary p-3">Нет данных по ученику.</td></tr>`;
       return;
     }
 
@@ -366,18 +378,11 @@ export class AnalyticsScreen {
         return `<div class="mb-2"><div class="trim-title">${escapeHtml(b.trimester)}</div><div>${badges || '<span class="small text-secondary">—</span>'}</div></div>`;
       }).join('');
 
-      const t = this.state.analytics.trimesterLabels;
       const trimValue = (label) => {
         if (isCalculatedMode) return r.trimesterCalculatedAverages?.[label];
         if (isFinalMode) return r.trimesterFinalRounded?.[label];
         return r.trimesterAverages?.[label];
       };
-      const t1 = trimValue(t[0]);
-      const t2 = trimValue(t[1]);
-      const t3 = trimValue(t[2]);
-      const s1 = !isCalculatedMode && r.trimesterSource?.[t[0]] === 'final';
-      const s2 = !isCalculatedMode && r.trimesterSource?.[t[1]] === 'final';
-      const s3 = !isCalculatedMode && r.trimesterSource?.[t[2]] === 'final';
 
       const trend = r.trend === 'up'
         ? (r.trendStrength === 'strong'
@@ -402,9 +407,11 @@ export class AnalyticsScreen {
 
       tr.innerHTML = `
         <td>${trend}${escapeHtml(r.subject)}${r.hasPoints ? ` <span class="badge text-bg-info" title="Есть точки: ${Number(r.pointsCount || 0)}">•</span>` : ''}</td>
-        <td class="text-center">${trimBadge(t1, s1)}</td>
-        <td class="text-center">${trimBadge(t2, s2)}</td>
-        <td class="text-center">${trimBadge(t3, s3)}</td>
+        ${periodLabels.map((label) => {
+          const value = trimValue(label);
+          const isFinal = !isCalculatedMode && r.trimesterSource?.[label] === 'final';
+          return `<td class="text-center">${trimBadge(value, isFinal)}</td>`;
+        }).join('')}
         <td class="text-center">${this.avgBadge(annualValue)}</td>
         <td class="text-center">${r.absencesCount || 0}</td>
         <td class="marks-cell">${isFinalOnly ? '<span class="small text-secondary">—</span>' : (trimHtml || '<span class="small text-secondary">—</span>')}</td>

@@ -77,7 +77,11 @@ export class FinalMarksScreen {
   }
 
   renderPreviewRows(rows) {
-    const labels = this.selectedPeriodLabels();
+    const previewPeriodLabels = [...new Set((rows || [])
+      .filter((row) => row.periodType === 'trimester')
+      .map((row) => row.periodLabel)
+      .filter(Boolean))];
+    const labels = previewPeriodLabels.length ? previewPeriodLabels : this.selectedPeriodLabels();
     const colCount = 2 + labels.length;
     this.refs.finalPreviewTableHead.innerHTML = `
       <tr>

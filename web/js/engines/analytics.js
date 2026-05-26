@@ -74,10 +74,25 @@ function pickFinalPeriodLabel(finalMark) {
   return '';
 }
 
+function parseBoundaryDate(raw, endOfDay = false) {
+  const src = norm(raw);
+  if (!src) return null;
+  let parts = null;
+  if (/^\d{4}-\d{2}-\d{2}/.test(src)) {
+    const [y, m, d] = src.slice(0, 10).split('-').map(Number);
+    parts = { y, m, d };
+  } else {
+    parts = parseRuDate(src);
+  }
+  if (!parts) return null;
+  return new Date(parts.y, parts.m - 1, parts.d, endOfDay ? 23 : 0, endOfDay ? 59 : 0, endOfDay ? 59 : 0, endOfDay ? 999 : 0);
+}
+
 function detectTrimesterByDate(dateObj, trimesterBoundaries) {
   for (const t of trimesterBoundaries || []) {
-    const s = new Date(`${t.start}T00:00:00`);
-    const e = new Date(`${t.end}T23:59:59`);
+    const s = parseBoundaryDate(t.start || t.begin_date);
+    const e = parseBoundaryDate(t.end || t.end_date, true);
+    if (!s || !e) continue;
     if (dateObj >= s && dateObj <= e) return t.label;
   }
   return 'Без триместра';
@@ -86,6 +101,12 @@ function detectTrimesterByDate(dateObj, trimesterBoundaries) {
 export function canonicalTrimesterLabel(label, trimesterBoundaries) {
   const raw = norm(label).toLowerCase();
   const labels = (trimesterBoundaries || []).map((x) => x.label);
+  const exact = labels.find((x) => norm(x).toLowerCase() === raw);
+  if (exact) return exact;
+  if (/полугод/.test(raw)) {
+    if (/(^|\s)1(\s|$)|\bперв/.test(raw)) return labels.find((x) => /1|перв/i.test(x)) || labels[0] || '1 полугодие';
+    if (/(^|\s)2(\s|$)|\bвтор/.test(raw)) return labels.find((x) => /2|втор/i.test(x)) || labels[1] || '2 полугодие';
+  }
   if (/(^|\s)1(\s|$)|\b1\s*тр|\b1\s*т|\bi\b/.test(raw)) return labels[0] || '1 триместр';
   if (/(^|\s)2(\s|$)|\b2\s*тр|\b2\s*т|\bii\b/.test(raw)) return labels[1] || '2 триместр';
   if (/(^|\s)3(\s|$)|\b3\s*тр|\b3\s*т|\biii\b/.test(raw)) return labels[2] || '3 триместр';
@@ -95,11 +116,34 @@ export function canonicalTrimesterLabel(label, trimesterBoundaries) {
 export function pickCurrentTrimester(trimesterBoundaries) {
   const now = new Date();
   for (const t of trimesterBoundaries || []) {
-    const s = new Date(`${t.start}T00:00:00`);
-    const e = new Date(`${t.end}T23:59:59`);
+    const s = parseBoundaryDate(t.start || t.begin_date);
+    const e = parseBoundaryDate(t.end || t.end_date, true);
+    if (!s || !e) continue;
     if (now >= s && now <= e) return t.label;
   }
-  return (trimesterBoundaries || []).at(-1)?.label || '3 триместр';
+  return (trimesterBoundaries || []).at(-1)?.label || 'Последний период';
+}
+
+function sortPeriodBoundaries(periods) {
+  return [...(periods || [])].sort((a, b) => {
+    const ad = parseBoundaryDate(a.start || a.begin_date);
+    const bd = parseBoundaryDate(b.start || b.begin_date);
+    return (ad?.getTime() || 0) - (bd?.getTime() || 0);
+  });
+}
+
+function schedulePeriodBoundaries(periods) {
+  return sortPeriodBoundaries(
+    (Array.isArray(periods) ? periods : [])
+      .filter((p) => !p.deleted_at)
+      .map((p) => ({
+        id: Number(p.id),
+        label: norm(p.name),
+        start: norm(p.begin_date),
+        end: norm(p.end_date)
+      }))
+      .filter((p) => Number.isFinite(p.id) && p.label && p.start && p.end)
+  );
 }
 
 function mapGroup(g) {
@@ -303,7 +347,8 @@ export function buildSubjectRows(rows, trimesterLabels, trimesterBoundaries) {
     if (isAcademicDebt) item.academicDebt = true;
     const isFinalYear = row.markType === 'final_year' && Number.isFinite(Number(row.numericMark));
     const isFinalTrim = row.markType === 'final_trimester' && Number.isFinite(Number(row.numericMark));
-    const finalLabel = canonicalTrimesterLabel(row.trimesterLabel || row.period, trimesterBoundaries);
+    const rowTrimesterBoundaries = row.trimesterBoundaries || trimesterBoundaries;
+    const finalLabel = canonicalTrimesterLabel(row.trimesterLabel || row.period, rowTrimesterBoundaries);
     if (row.markType === 'final_intermediate') return;
 
     if (isFinalYear) {
@@ -319,7 +364,7 @@ export function buildSubjectRows(rows, trimesterLabels, trimesterBoundaries) {
     const dateRaw = row.date || row.period;
     const d = parseRuDate(dateRaw);
     const dateObj = d ? new Date(d.y, d.m - 1, d.d, 12, 0, 0) : null;
-    const trimester = dateObj ? detectTrimesterByDate(dateObj, trimesterBoundaries) : 'Без триместра';
+    const trimester = dateObj ? detectTrimesterByDate(dateObj, rowTrimesterBoundaries) : 'Без триместра';
     const weight = Number.isFinite(Number(row.weight)) && Number(row.weight) > 0 ? Number(row.weight) : 1;
     const isPoint = Boolean(row.isPoint);
     const comment = norm(row.comment);
@@ -632,6 +677,7 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
   const scheduleMap = new Map();
   const trimesterPeriodIds = {};
   const trimesterPeriodIdsBySchedule = new Map();
+  const trimesterBoundariesBySchedule = new Map();
   const uniqueScheduleIds = [...new Set(groups.map((g) => g.attestationScheduleId).filter(Number.isFinite))];
   statusCb('Получаем расписание аттестационных периодов...');
   await parallelMap(uniqueScheduleIds, 4, async (sid) => {
@@ -639,21 +685,27 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
       const schedule = await meshApi(`/api/ej/core/teacher/v1/attestation_periods_schedules/${sid}`);
       const periods = Array.isArray(schedule?.periods) ? schedule.periods : [];
       const scheduleTrimesterPeriodIds = {};
+      const scheduleBoundaries = schedulePeriodBoundaries(periods);
       periods.forEach((p) => {
         const id = Number(p.id);
         if (!Number.isFinite(id)) return;
         const periodName = norm(p.name);
         scheduleMap.set(id, periodName);
-        const trimesterLabel = canonicalTrimesterLabel(periodName, config.trimesterBoundaries || []);
+        const trimesterLabel = canonicalTrimesterLabel(periodName, scheduleBoundaries);
         if (trimesterLabel) {
           if (!trimesterPeriodIds[trimesterLabel]) trimesterPeriodIds[trimesterLabel] = id;
           scheduleTrimesterPeriodIds[trimesterLabel] = id;
         }
       });
       trimesterPeriodIdsBySchedule.set(sid, scheduleTrimesterPeriodIds);
+      trimesterBoundariesBySchedule.set(sid, scheduleBoundaries);
     } catch (_) {
     }
   });
+  const loadedScheduleBoundaries = [...trimesterBoundariesBySchedule.values()].filter((x) => x.length);
+  const activeTrimesterBoundaries = loadedScheduleBoundaries.length === 1
+    ? loadedScheduleBoundaries[0]
+    : sortPeriodBoundaries(config.trimesterBoundaries || []);
 
   const from = toRuDate(config.exportStartAt || '2025-09-01');
   const to = toRuDate(config.exportStopAt || '2026-08-31');
@@ -717,6 +769,7 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
         weight: Number.isFinite(Number(item.weight)) && Number(item.weight) > 0 ? Number(item.weight) : 1,
         date: ruDate,
         trimesterPeriodIds: trimesterPeriodIdsBySchedule.get(group.attestationScheduleId) || trimesterPeriodIds,
+        trimesterBoundaries: trimesterBoundariesBySchedule.get(group.attestationScheduleId) || activeTrimesterBoundaries,
         sourceFile: 'api'
       });
     });
@@ -767,6 +820,7 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
           weight: 1,
           date: ruDate,
           trimesterPeriodIds: trimesterPeriodIdsBySchedule.get(group.attestationScheduleId) || trimesterPeriodIds,
+          trimesterBoundaries: trimesterBoundariesBySchedule.get(group.attestationScheduleId) || activeTrimesterBoundaries,
           sourceFile: 'api'
         });
       });
@@ -800,11 +854,14 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
       const finalMarkType = norm(fm.mark_type);
       const isIntermediate = finalMarkType === 'intermediate_attestation';
       const rawPeriodLabel = Number.isFinite(periodId) ? (scheduleMap.get(periodId) || '') : pickFinalPeriodLabel(fm);
+      const subjectBoundaries = subjectGroup
+        ? (trimesterBoundariesBySchedule.get(subjectGroup.attestationScheduleId) || activeTrimesterBoundaries)
+        : activeTrimesterBoundaries;
       const trimesterLabel = isYear
         ? 'Год'
         : isIntermediate
           ? 'Промежуточная аттестация'
-          : canonicalTrimesterLabel(rawPeriodLabel, config.trimesterBoundaries || []);
+          : canonicalTrimesterLabel(rawPeriodLabel, subjectBoundaries);
       if (!isYear && !isIntermediate && !trimesterLabel) continue;
 
       rows.push({
@@ -830,6 +887,7 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
         trimesterPeriodIds: subjectGroup
           ? (trimesterPeriodIdsBySchedule.get(subjectGroup.attestationScheduleId) || trimesterPeriodIds)
           : trimesterPeriodIds,
+        trimesterBoundaries: subjectBoundaries,
         finalMarkType: isYear ? 'year' : finalMarkType || null,
         sourceFile: 'api'
       });
@@ -843,9 +901,9 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
   });
 
   const students = Object.keys(byStudent).sort((a, b) => a.localeCompare(b, 'ru'));
-  const currentTrimester = pickCurrentTrimester(config.trimesterBoundaries || []);
-  const trimesterLabels = (config.trimesterBoundaries || []).map((x) => x.label);
-  const studentCards = students.map((name) => buildStudentCard(name, byStudent[name] || [], currentTrimester, trimesterLabels, config.trimesterBoundaries || []));
+  const currentTrimester = pickCurrentTrimester(activeTrimesterBoundaries);
+  const trimesterLabels = activeTrimesterBoundaries.map((x) => x.label);
+  const studentCards = students.map((name) => buildStudentCard(name, byStudent[name] || [], currentTrimester, trimesterLabels, activeTrimesterBoundaries));
 
   return {
     students,

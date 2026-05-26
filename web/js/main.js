@@ -353,13 +353,21 @@ const finalMarksScreen = new FinalMarksScreen(refs, state, {
       }
     }
 
+    const availablePeriodLabels = state.analytics.trimesterLabels || [];
+    const requestedPeriodLabels = Array.isArray(selectedPeriodTypes?.trimesters) ? selectedPeriodTypes.trimesters : [];
+    const matchedPeriodLabels = requestedPeriodLabels.filter((label) => availablePeriodLabels.includes(label));
+    const normalizedPeriodTypes = {
+      ...selectedPeriodTypes,
+      trimesters: requestedPeriodLabels.length && !matchedPeriodLabels.length ? availablePeriodLabels : matchedPeriodLabels
+    };
+
     return buildFinalMarksPreview({
       byStudent: state.analytics.byStudent,
       trimesterLabels: state.analytics.trimesterLabels,
       trimesterBoundaries: state.config.trimesterBoundaries || [],
       trimesterPeriodIds: state.analytics.trimesterPeriodIds || {},
       academicYearId: state.analytics.academicYearId || state.config.academicYearId,
-      selectedPeriodTypes
+      selectedPeriodTypes: normalizedPeriodTypes
     });
   },
   apply: async (preview) => {
