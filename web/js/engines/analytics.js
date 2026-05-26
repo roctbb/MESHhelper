@@ -113,8 +113,27 @@ function mapGroup(g) {
     classUnitName: norm(g.class_unit_name),
     classUnitIds: Array.isArray(g.class_unit_ids) ? g.class_unit_ids.map((x) => Number(x)).filter(Number.isFinite) : [],
     attestationScheduleId: Number(g.attestation_periods_schedule_id) || null,
-    studentCount: Number(g.student_count || 0)
+    studentCount: Number(g.student_count || 0),
+    relatedGroupIds: Array.isArray(g.related_group_ids) ? g.related_group_ids.map((x) => Number(x)).filter(Number.isFinite) : []
   };
+}
+
+function attachRelatedGroupIds(rawGroups) {
+  const groups = Array.isArray(rawGroups) ? rawGroups : [];
+  const metaGroups = groups.filter((g) => Boolean(g?.is_metagroup));
+  return groups.map((g) => {
+    const id = Number(g?.id);
+    if (!Number.isFinite(id) || Boolean(g?.is_metagroup)) return g;
+    const related = metaGroups
+      .filter((m) => Number(m?.subject_id) === Number(g?.subject_id))
+      .filter((m) => {
+        const subgroupIds = Array.isArray(m?.subgroup_ids) ? m.subgroup_ids.map((x) => Number(x)).filter(Number.isFinite) : [];
+        return subgroupIds.includes(id);
+      })
+      .map((m) => Number(m.id))
+      .filter(Number.isFinite);
+    return related.length ? { ...g, related_group_ids: related } : g;
+  });
 }
 
 function extractTeacherClassUnitIds(teacher) {
@@ -239,7 +258,7 @@ async function loadGroupsForAnalytics({ meshApi, fetchPaged, config, auth, saved
     if (Number.isFinite(id)) uniq.set(id, g);
   });
 
-  const groups = [...uniq.values()]
+  const groups = attachRelatedGroupIds([...uniq.values()])
     .filter((g) => !g.is_metagroup)
     .filter((g) => Number(g.student_count || 0) > 0)
     .map(mapGroup);
@@ -532,7 +551,7 @@ export function buildStudentCard(name, rows, currentTrimester, trimesterLabels, 
   };
 }
 
-export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, savedClassFilter, groupIds, statusCb }) {
+export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, savedClassFilter, groupIds, markGroupIdsByGroupId, statusCb }) {
   let groups;
   let academicYearId;
   let classOptions;
@@ -560,7 +579,7 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
         return g;
       }
     });
-    groups = detailedGroupsRaw
+    groups = attachRelatedGroupIds(detailedGroupsRaw)
       .filter((g) => !g.is_metagroup)
       .filter((g) => Number(g.student_count || 0) > 0)
       .map(mapGroup);
@@ -642,17 +661,23 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
 
   statusCb(`Получаем отметки по группам (${groups.length})...`);
   await parallelMap(groups, 4, async (group, idx) => {
+    const extraMarkGroupIds = Array.isArray(markGroupIdsByGroupId?.[group.id])
+      ? markGroupIdsByGroupId[group.id].map((x) => Number(x)).filter(Number.isFinite)
+      : [];
+    const markGroupIds = [...new Set([group.id, ...(group.relatedGroupIds || []), ...extraMarkGroupIds])]
+      .filter(Number.isFinite);
     const marks = await fetchPaged('/api/ej/core/teacher/v1/marks', {
-      group_ids: group.id,
+      group_ids: markGroupIds.join(','),
       subject_id: group.subjectId,
       class_level_id: group.classLevelId,
-      created_at_from: from,
-      created_at_to: to,
+      lesson_date_from: from,
+      lesson_date_to: to,
       with_non_numeric_entries: true
     }, config.marksPerPage || 300, 220);
 
     marks.forEach((item) => {
       const studentProfileId = Number(item.student_profile_id);
+      if (!studentNameById.has(studentProfileId)) return;
       const student = studentNameById.get(studentProfileId) || `ID ${studentProfileId}`;
       const parsed = parseMarkValue(item.name || item.values?.[0]?.grade?.origin, item.values);
       if (!parsed) return;

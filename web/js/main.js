@@ -16,8 +16,10 @@ import { ModeScreen } from './components/ModeScreen.js';
 import { AnalyticsScreen } from './components/AnalyticsScreen.js';
 import { MarkingScreen } from './components/MarkingScreen.js';
 import { FinalMarksScreen } from './components/FinalMarksScreen.js';
+import { SoftSkillsScreen } from './components/SoftSkillsScreen.js';
 import { loadAnalyticsData } from './engines/analytics.js';
 import { loadGroupsForMarking, loadControlFormsForMarking, buildMarkingPreview, applyMarkingPreview, buildFinalMarksPreview, applyFinalMarksPreview } from './engines/marking.js';
+import { buildSoftSkillsPlan, applySoftSkillsPlan } from './engines/softSkills.js';
 
 const state = {
   config: null,
@@ -54,6 +56,10 @@ const state = {
     selectedGroupId: '',
     preview: null
   },
+  softSkills: {
+    loading: false,
+    result: null
+  },
   ui: {
     search: '',
     sort: 'avg_desc',
@@ -69,6 +75,7 @@ const refs = {
   analyticsScreen: document.getElementById('analyticsScreen'),
   markingScreen: document.getElementById('markingScreen'),
   finalMarksScreen: document.getElementById('finalMarksScreen'),
+  softSkillsScreen: document.getElementById('softSkillsScreen'),
   backBtn: document.getElementById('backBtn'),
   logoutBtn: document.getElementById('logoutBtn'),
 
@@ -83,6 +90,7 @@ const refs = {
   openAnalyticsModeBtn: document.getElementById('openAnalyticsModeBtn'),
   openMarkingModeBtn: document.getElementById('openMarkingModeBtn'),
   openFinalMarksModeBtn: document.getElementById('openFinalMarksModeBtn'),
+  openSoftSkillsModeBtn: document.getElementById('openSoftSkillsModeBtn'),
 
   analyticsLoader: document.getElementById('analyticsLoader'),
   analyticsLoaderText: document.getElementById('analyticsLoaderText'),
@@ -141,7 +149,11 @@ const refs = {
   finalApplyBtn: document.getElementById('finalApplyBtn'),
   finalMarkingStatus: document.getElementById('finalMarkingStatus'),
   finalPreviewTableHead: document.getElementById('finalPreviewTableHead'),
-  finalPreviewTableBody: document.getElementById('finalPreviewTableBody')
+  finalPreviewTableBody: document.getElementById('finalPreviewTableBody'),
+
+  skillsRunBtn: document.getElementById('skillsRunBtn'),
+  skillsStatus: document.getElementById('skillsStatus'),
+  skillsTableBody: document.getElementById('skillsTableBody')
 };
 
 function setScreen(name) {
@@ -150,7 +162,8 @@ function setScreen(name) {
     mode: refs.modeScreen,
     analytics: refs.analyticsScreen,
     marking: refs.markingScreen,
-    finalMarks: refs.finalMarksScreen
+    finalMarks: refs.finalMarksScreen,
+    softSkills: refs.softSkillsScreen
   };
   Object.values(map).forEach((el) => el.classList.remove('active'));
   if (map[name]) map[name].classList.add('active');
@@ -210,7 +223,8 @@ const authScreen = new AuthScreen(refs, {
 const modeScreen = new ModeScreen(refs, {
   onOpenAnalytics: () => { location.hash = '#analytics'; },
   onOpenMarking: () => { location.hash = '#marking'; },
-  onOpenFinalMarks: () => { location.hash = '#final-marks'; }
+  onOpenFinalMarks: () => { location.hash = '#final-marks'; },
+  onOpenSoftSkills: () => { location.hash = '#soft-skills'; }
 });
 
 const analyticsScreen = new AnalyticsScreen(refs, state, {
@@ -312,6 +326,8 @@ const finalMarksScreen = new FinalMarksScreen(refs, state, {
     if (selectedCount <= 0) throw new Error('Выберите хотя бы один тип отметок');
 
     const missingFinalPeriodContext = !Object.keys(state.analytics.trimesterPeriodIds || {}).length;
+    const selectedGroup = (state.finalMarks.groups || []).find((g) => Number(g.id) === gid) || null;
+    const relatedGroupIds = Array.isArray(selectedGroup?.relatedGroupIds) ? selectedGroup.relatedGroupIds : [];
     const currentGroupIds = new Set(
       Object.values(state.analytics.byStudent || {})
         .flat()
@@ -328,6 +344,7 @@ const finalMarksScreen = new FinalMarksScreen(refs, state, {
           config: state.config,
           auth: state.auth,
           groupIds: [gid],
+          markGroupIdsByGroupId: { [gid]: relatedGroupIds },
           statusCb: (text) => { refs.finalMarkingStatus.textContent = text; }
         });
         applyAnalyticsData(data);
@@ -347,6 +364,23 @@ const finalMarksScreen = new FinalMarksScreen(refs, state, {
   },
   apply: async (preview) => {
     return applyFinalMarksPreview({ meshApi: api.meshApi, preview });
+  }
+});
+
+const softSkillsScreen = new SoftSkillsScreen(refs, state, {
+  run: async ({ statusCb }) => {
+    const plan = await buildSoftSkillsPlan({
+      meshApi: api.meshApi,
+      fetchPaged: api.fetchPaged,
+      config: state.config,
+      auth: state.auth,
+      statusCb
+    });
+    return applySoftSkillsPlan({
+      meshApi: api.meshApi,
+      plan,
+      statusCb
+    });
   }
 });
 
@@ -470,6 +504,11 @@ async function renderRoute() {
     return;
   }
 
+  if (head === 'soft-skills') {
+    setScreen('softSkills');
+    return;
+  }
+
   location.hash = '#mode';
 }
 
@@ -491,7 +530,7 @@ async function init() {
 
 refs.backBtn.addEventListener('click', () => {
   const { head } = parseRoute();
-  if (head === 'analytics' || head === 'marking' || head === 'final-marks') location.hash = '#mode';
+  if (head === 'analytics' || head === 'marking' || head === 'final-marks' || head === 'soft-skills') location.hash = '#mode';
 });
 
 refs.logoutBtn.addEventListener('click', () => {
@@ -514,6 +553,7 @@ modeScreen.bind();
 analyticsScreen.bind();
 markingScreen.bind();
 finalMarksScreen.bind();
+softSkillsScreen.bind();
 
 init().catch((err) => {
   alert(`Ошибка запуска: ${err.message}`);

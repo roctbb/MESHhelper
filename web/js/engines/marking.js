@@ -10,8 +10,27 @@ function mapGroup(g) {
     classLevelId: Number(g.class_level_id),
     classUnitName: norm(g.class_unit_name),
     classUnitIds: Array.isArray(g.class_unit_ids) ? g.class_unit_ids.map((x) => Number(x)).filter(Number.isFinite) : [],
-    studentCount: Number(g.student_count || 0)
+    studentCount: Number(g.student_count || 0),
+    relatedGroupIds: Array.isArray(g.related_group_ids) ? g.related_group_ids.map((x) => Number(x)).filter(Number.isFinite) : []
   };
+}
+
+function attachRelatedGroupIds(rawGroups) {
+  const groups = Array.isArray(rawGroups) ? rawGroups : [];
+  const metaGroups = groups.filter((g) => Boolean(g?.is_metagroup));
+  return groups.map((g) => {
+    const id = Number(g?.id);
+    if (!Number.isFinite(id) || Boolean(g?.is_metagroup)) return g;
+    const related = metaGroups
+      .filter((m) => Number(m?.subject_id) === Number(g?.subject_id))
+      .filter((m) => {
+        const subgroupIds = Array.isArray(m?.subgroup_ids) ? m.subgroup_ids.map((x) => Number(x)).filter(Number.isFinite) : [];
+        return subgroupIds.includes(id);
+      })
+      .map((m) => Number(m.id))
+      .filter(Number.isFinite);
+    return related.length ? { ...g, related_group_ids: related } : g;
+  });
 }
 
 function toEducationLevelId(classLevelId) {
@@ -220,7 +239,7 @@ export async function loadGroupsForMarking({ meshApi, fetchPaged, config, auth, 
     if (Number.isFinite(id)) uniq.set(id, g);
   });
 
-  const groups = [...uniq.values()]
+  const groups = attachRelatedGroupIds([...uniq.values()])
     .filter((g) => !g.is_metagroup)
     .filter((g) => Number(g.student_count || 0) > 0)
     .map(mapGroup);
