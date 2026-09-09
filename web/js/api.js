@@ -23,8 +23,7 @@ export function createApiClient({ getAuth, onAuthError }) {
           token: auth.token,
           profileId: auth.profileId,
           roleId: auth.roleId,
-          hostId: auth.hostId,
-          aid: auth.aid
+          hostId: auth.hostId
         }
       })
     });
@@ -37,6 +36,7 @@ export function createApiClient({ getAuth, onAuthError }) {
         path: path.replace(/\/\d+$/, '/:id'),
         status: result.status,
         academicYearId: query?.academic_year_id ?? null,
+        requestAcademicYearId: result.requestAcademicYearId ?? null,
         responseAcademicYearId: Number.isInteger(Number(sample?.academic_year_id)) && Number(sample?.academic_year_id) > 0
           ? Number(sample.academic_year_id) : null,
         page: query?.page ?? null,

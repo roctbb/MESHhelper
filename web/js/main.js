@@ -83,7 +83,6 @@ const refs = {
   profileInput: document.getElementById('profileInput'),
   roleInput: document.getElementById('roleInput'),
   hostInput: document.getElementById('hostInput'),
-  aidInput: document.getElementById('aidInput'),
   authStatus: document.getElementById('authStatus'),
   saveAuthBtn: document.getElementById('saveAuthBtn'),
 
@@ -529,7 +528,7 @@ async function init() {
   if (auth) {
     state.auth = auth;
   } else {
-    authScreen.fill({ roleId: '9', hostId: '9', aid: '13' });
+    authScreen.fill({ roleId: '9', hostId: '9' });
     location.hash = '#auth';
   }
 
@@ -548,7 +547,7 @@ refs.logoutBtn.addEventListener('click', () => {
   state.marking.loaded = false;
   state.finalMarks.groups = [];
   state.finalMarks.preview = null;
-  authScreen.fill({ roleId: '9', hostId: '9', aid: '13' });
+  authScreen.fill({ roleId: '9', hostId: '9' });
   location.hash = '#auth';
 });
 

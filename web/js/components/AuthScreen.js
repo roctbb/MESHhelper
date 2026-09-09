@@ -19,8 +19,7 @@ function parseAuthPayload(raw) {
       token: data.authentication_token || data.token || data.aupd_token || '',
       profileId: data.profile_id || data.profileId || profile?.id || '',
       roleId: data.role_id || data.roleId || '',
-      hostId: data.host_id || data.hostId || '',
-      aid: data.aid || ''
+      hostId: data.host_id || data.hostId || ''
     };
   } catch (_) {
     return null;
@@ -38,7 +37,6 @@ export class AuthScreen {
     this.refs.profileInput.value = auth?.profileId || '';
     this.refs.roleInput.value = auth?.roleId || '9';
     this.refs.hostInput.value = auth?.hostId || '9';
-    this.refs.aidInput.value = auth?.aid || '13';
   }
 
   bind() {
@@ -50,8 +48,7 @@ export class AuthScreen {
           token: norm(parsed.token || this.refs.tokenInput.value),
           profileId: norm(this.refs.profileInput.value || parsed.profileId),
           roleId: norm(this.refs.roleInput.value || parsed.roleId) || '9',
-          hostId: norm(this.refs.hostInput.value || parsed.hostId) || '9',
-          aid: norm(this.refs.aidInput.value || parsed.aid) || '13'
+          hostId: norm(this.refs.hostInput.value || parsed.hostId) || '9'
         };
         if (!auth.token || !auth.profileId) throw new Error('Заполните token и profile_id');
         this.fill(auth);

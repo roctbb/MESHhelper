@@ -83,12 +83,11 @@ function normalizeSubsystem(rawSubsystem) {
   return value;
 }
 
-function buildProxyHeaders(auth, subsystem) {
+function buildProxyHeaders(auth, subsystem, academicYearId) {
   const token = String(auth?.token || '').trim();
   const profileId = String(auth?.profileId || '').trim();
   const roleId = String(auth?.roleId || process.env.API_ROLE_ID || '9').trim();
   const hostId = String(auth?.hostId || process.env.API_HOST_ID || '9').trim();
-  const aid = String(auth?.aid || process.env.API_AID || '13').trim();
 
   if (!token || !profileId) {
     throw new Error('token/profile_id are required');
@@ -104,7 +103,7 @@ function buildProxyHeaders(auth, subsystem) {
     'Profile-Id': profileId,
     'X-Mes-RoleId': roleId,
     'x-mes-hostid': hostId,
-    aid,
+    aid: String(academicYearId),
     'x-mes-subsystem': normalizeSubsystem(subsystem || process.env.API_SUBSYSTEM || 'journalw')
   };
 }
@@ -123,7 +122,10 @@ async function proxyMesh(payload) {
     url.searchParams.set(k, String(v));
   }
 
-  const headers = buildProxyHeaders(payload?.auth || {}, payload?.subsystem);
+  const academicYearId = Number(query.academic_year_id ?? body?.academic_year_id
+    ?? process.env.API_ACADEMIC_YEAR_ID ?? DEFAULT_ACADEMIC_YEAR_ID);
+  if (!Number.isInteger(academicYearId) || academicYearId <= 0) throw new Error('Invalid academic_year_id');
+  const headers = buildProxyHeaders(payload?.auth || {}, payload?.subsystem, academicYearId);
   const reqInit = {
     method,
     headers
@@ -145,6 +147,7 @@ async function proxyMesh(payload) {
     ok: response.ok,
     status: response.status,
     contentType: ctype,
+    requestAcademicYearId: academicYearId,
     data
   };
 }
