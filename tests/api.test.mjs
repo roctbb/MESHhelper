@@ -41,3 +41,12 @@ test('discovery logs contain structure and counts without credentials or persona
   assert.equal(summary.assignedGroupCount, 2);
   assert.equal(summary.path, '/api/ej/core/teacher/v1/teacher_profiles/:id');
 });
+
+test('discovery distinguishes the requested year from the year returned by MESH', async (t) => {
+  const log = t.mock.method(console, 'info', () => {});
+  const { meshApi } = client(t, [{ id: 10, academic_year_id: 13 }]);
+  await meshApi(`${groupPath}/10`, { query: { academic_year_id: 14 } });
+  const summary = JSON.parse(log.mock.calls[0].arguments[1]);
+  assert.equal(summary.academicYearId, 14);
+  assert.equal(summary.responseAcademicYearId, 13);
+});

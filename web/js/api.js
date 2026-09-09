@@ -37,6 +37,8 @@ export function createApiClient({ getAuth, onAuthError }) {
         path: path.replace(/\/\d+$/, '/:id'),
         status: result.status,
         academicYearId: query?.academic_year_id ?? null,
+        responseAcademicYearId: Number.isInteger(Number(sample?.academic_year_id)) && Number(sample?.academic_year_id) > 0
+          ? Number(sample.academic_year_id) : null,
         page: query?.page ?? null,
         groupFilterCount: countIds(query?.group_ids),
         classFilterCount: countIds(query?.class_unit_ids),
