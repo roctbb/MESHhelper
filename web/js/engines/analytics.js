@@ -810,6 +810,7 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
   const rows = [];
   let marksReceived = 0;
   let marksWithoutProfile = 0;
+  let attendancesWithoutProfile = 0;
   let completedGroups = 0;
 
   statusCb(`Получаем отметки по группам (${groups.length})...`);
@@ -896,7 +897,10 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
 
       attendances.forEach((a) => {
         const studentProfileId = Number(a.student_profile_id);
-        if (!Number.isFinite(studentProfileId)) return;
+        if (!studentNameById.has(studentProfileId)) {
+          attendancesWithoutProfile += 1;
+          return;
+        }
         const scheduleLessonId = Number(a.schedule_lesson_id) || null;
         const key = `${studentProfileId}|${scheduleLessonId}|${group.id}`;
         if (seen.has(key)) return;
@@ -1000,13 +1004,15 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
     }
   }
 
-  const byStudent = {};
+  // The roster, not the presence of marks or absences, defines the student list.
+  const byStudent = Object.fromEntries([...studentNameById.values()].map((name) => [name, []]));
   console.info('[MESHhelper] Analytics data', JSON.stringify({
     academicYearId,
     groups: groups.length,
     profiles: profiles.length,
     marksReceived,
     marksWithoutProfile,
+    attendancesWithoutProfile,
     rows: rows.length
   }));
   rows.forEach((r) => {

@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { loadAnalyticsData } from '../web/js/engines/analytics.js';
+import { loadAnalyticsData, buildSubjectRows } from '../web/js/engines/analytics.js';
 
 function fixture(groups, { teacher = {}, details = {}, explicit = false } = {}) {
   const requests = [];
@@ -153,4 +153,63 @@ test('explicit zero-count groups also retain historical marks', async () => {
   const data = await loadAnalyticsData(options);
   assert.equal(requests.find((r) => r.path.endsWith('/student_profiles')).query.group_ids, '10');
   assert.equal(data.byStudent['Historical student'][0].numericMark, 4);
+});
+
+test('all roster students are present even without marks, finals or attendances', async () => {
+  const { options } = fixture([{ id: 10, class_unit_id: 100 }]);
+  const fetchPaged = options.fetchPaged;
+  options.fetchPaged = async (path, query) => {
+    if (path.endsWith('/student_profiles')) return [
+      { id: 501, short_name: 'Student A' },
+      { id: 502, short_name: 'Student B' }
+    ];
+    return fetchPaged(path, query);
+  };
+  const data = await loadAnalyticsData(options);
+  assert.deepEqual(data.students, ['Student A', 'Student B']);
+  assert.deepEqual(data.byStudent['Student B'], []);
+  assert.equal(data.studentCards[1].averageGrade, null);
+});
+
+test('shared group attendances cannot create unnamed students outside selected roster', async () => {
+  const { options } = fixture([{ id: 10, class_unit_id: 100, subject_id: 5 }]);
+  options.config.includeAttendances = true;
+  const fetchPaged = options.fetchPaged;
+  options.fetchPaged = async (path, query) => {
+    if (path.endsWith('/student_profiles')) return [{ id: 501, short_name: 'Student A' }];
+    if (path.endsWith('/attendances')) return [
+      { student_profile_id: 501, schedule_lesson_id: 1, date: '2026-09-02' },
+      { student_profile_id: 999, schedule_lesson_id: 1, date: '2026-09-02' }
+    ];
+    if (path.endsWith('/marks')) return [{ student_profile_id: 999, name: '5', date: '2026-09-02' }];
+    return fetchPaged(path, query);
+  };
+  const data = await loadAnalyticsData(options);
+  assert.deepEqual(data.students, ['Student A']);
+  assert.equal(data.byStudent['Student A'].length, 1);
+  assert.equal(data.byStudent['Student A'][0].markType, 'absence');
+});
+
+test('daily marks retain dates and individual values alongside calculated trimester averages', async () => {
+  const { options } = fixture([{ id: 10, class_unit_id: 100, subject_id: 5, subject_name: 'Subject' }]);
+  options.config.trimesterBoundaries = [{ label: '1 триместр', start: '2026-09-01', end: '2026-11-30' }];
+  const fetchPaged = options.fetchPaged;
+  options.fetchPaged = async (path, query) => {
+    if (path.endsWith('/student_profiles')) return [{ id: 501, short_name: 'Student A' }];
+    if (path.endsWith('/marks')) return [
+      { student_profile_id: 501, name: '10', date: '03.09.2026', weight: 1, mark_type_id: 1 },
+      { student_profile_id: 501, name: '8', date: '07.09.2026', weight: 2, mark_type_id: 1 }
+    ];
+    return fetchPaged(path, query);
+  };
+  const data = await loadAnalyticsData(options);
+  const rows = data.byStudent['Student A'];
+  assert.ok(rows.every((r) => r.markType === 'grade'));
+  const subject = buildSubjectRows(rows, data.trimesterLabels, options.config.trimesterBoundaries)[0];
+  const marks = subject.marksByTrimester[0].marks;
+  assert.deepEqual(marks.map((m) => m.mark), ['10', '8']);
+  assert.match(marks[0].tooltip, /03\.09\.2026/);
+  assert.match(marks[1].tooltip, /07\.09\.2026/);
+  assert.equal(subject.trimesterSource['1 триместр'], 'calculated');
+  assert.equal(subject.trimesterFinalMarks['1 триместр'], null);
 });

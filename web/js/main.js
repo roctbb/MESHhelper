@@ -413,6 +413,11 @@ async function openAnalytics() {
     }
   }
 
+  if (state.analytics.selectedStudent && !state.analytics.students.includes(state.analytics.selectedStudent)) {
+    state.analytics.selectedStudent = '';
+    history.replaceState(null, '', '#analytics');
+  }
+
   refs.analyticsLoader.style.display = 'none';
   refs.analyticsContent.style.display = '';
   analyticsScreen.renderClassFilter();
