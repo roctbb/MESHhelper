@@ -7,25 +7,28 @@ const ROOT = __dirname;
 const WEB_DIR = path.join(ROOT, 'web');
 const PORT = Number(process.env.WEB_PORT || 8787);
 const MESH_BASE = 'https://school.mos.ru';
+const DEFAULT_ACADEMIC_YEAR_ID = 14;
+const DEFAULT_EXPORT_START_AT = '2026-09-01';
+const DEFAULT_EXPORT_STOP_AT = '2027-08-31';
 
 const TRIMESTERS = [
   {
     key: 't1',
     label: process.env.TRIMESTER_1_LABEL || '1 триместр',
-    start: process.env.TRIMESTER_1_START || '2025-09-01',
-    end: process.env.TRIMESTER_1_END || '2025-11-30'
+    start: process.env.TRIMESTER_1_START || '2026-09-01',
+    end: process.env.TRIMESTER_1_END || '2026-11-30'
   },
   {
     key: 't2',
     label: process.env.TRIMESTER_2_LABEL || '2 триместр',
-    start: process.env.TRIMESTER_2_START || '2025-12-01',
-    end: process.env.TRIMESTER_2_END || '2026-02-28'
+    start: process.env.TRIMESTER_2_START || '2026-12-01',
+    end: process.env.TRIMESTER_2_END || '2027-02-28'
   },
   {
     key: 't3',
     label: process.env.TRIMESTER_3_LABEL || '3 триместр',
-    start: process.env.TRIMESTER_3_START || '2026-03-01',
-    end: process.env.TRIMESTER_3_END || '2026-05-23'
+    start: process.env.TRIMESTER_3_START || '2027-03-01',
+    end: process.env.TRIMESTER_3_END || '2027-05-23'
   }
 ];
 
@@ -178,7 +181,7 @@ const server = http.createServer(async (req, res) => {
       return json(res, 200, {
         appName: 'MESH Assistant',
         meshBase: MESH_BASE,
-        academicYearId: Number(process.env.API_ACADEMIC_YEAR_ID || 13),
+        academicYearId: Number(process.env.API_ACADEMIC_YEAR_ID || DEFAULT_ACADEMIC_YEAR_ID),
         schoolId: Number(process.env.API_SCHOOL_ID || 0),
         analyticsClassUnitIds: parseIdList(process.env.API_CLASS_UNIT_IDS),
         groupsPerPage: Number(process.env.API_GROUPS_PER_PAGE || 300),
@@ -186,8 +189,8 @@ const server = http.createServer(async (req, res) => {
         attendancesPerPage: Number(process.env.API_ATTENDANCES_PER_PAGE || 1000),
         includeAttendances: String(process.env.API_INCLUDE_ATTENDANCES ?? 'true').toLowerCase() === 'true',
         trimesterBoundaries: TRIMESTERS,
-        exportStartAt: process.env.EXPORT_START_AT || '2025-09-01',
-        exportStopAt: process.env.EXPORT_STOP_AT || '2026-08-31'
+        exportStartAt: process.env.EXPORT_START_AT || DEFAULT_EXPORT_START_AT,
+        exportStopAt: process.env.EXPORT_STOP_AT || DEFAULT_EXPORT_STOP_AT
       });
     }
 
