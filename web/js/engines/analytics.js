@@ -7,6 +7,7 @@ import {
 } from '../utils.js';
 
 const STRONG_TREND_DIFF = 2;
+const DEFAULT_ACADEMIC_YEAR_ID = 14;
 
 export function parseMarkValue(raw, values) {
   const s = norm(raw);
@@ -146,6 +147,71 @@ function schedulePeriodBoundaries(periods) {
   );
 }
 
+function addFiniteNumber(set, value) {
+  const n = Number(value);
+  if (Number.isFinite(n)) set.add(n);
+}
+
+function collectClassUnits(g) {
+  const units = new Map();
+  const add = (id, name = '') => {
+    const n = Number(id);
+    if (Number.isFinite(n) && !units.has(n)) units.set(n, norm(name) || `Класс ${n}`);
+  };
+  const addFromItem = (item) => {
+    if (item && typeof item === 'object') {
+      add(item.id ?? item.class_unit_id, item.name ?? item.class_unit_name ?? item.title);
+    } else {
+      add(item);
+    }
+  };
+
+  add(g?.class_unit_id, g?.class_unit_name);
+  addFromItem(g?.class_unit);
+  addFromItem(g?.classUnit);
+
+  [
+    g?.class_unit_ids,
+    g?.class_units,
+    g?.classUnits
+  ].forEach((items) => {
+    (Array.isArray(items) ? items : []).forEach(addFromItem);
+  });
+
+  return [...units.entries()].map(([id, name]) => ({ id, name }));
+}
+
+function collectClassUnitIds(g) {
+  const ids = new Set();
+  collectClassUnits(g).forEach((unit) => addFiniteNumber(ids, unit.id));
+  return [...ids];
+}
+
+function addClassOptionsFromGroups(classOptionMap, groups) {
+  (Array.isArray(groups) ? groups : []).forEach((g) => {
+    collectClassUnits(g).forEach(({ id, name }) => {
+      if (!classOptionMap.has(id)) classOptionMap.set(id, name);
+    });
+  });
+}
+
+async function fetchGroupDetails(meshApi, groupIds, statusCb) {
+  const ids = [...new Set((Array.isArray(groupIds) ? groupIds : [])
+    .map((x) => Number(x))
+    .filter(Number.isFinite))];
+  if (!ids.length) return [];
+
+  statusCb(`Уточняем данные групп (${ids.length})...`);
+  return parallelMap(ids, 4, async (id) => {
+    try {
+      return await meshApi(`/api/ej/plan/teacher/v1/groups/${id}`);
+    } catch (err) {
+      console.warn('[MESHhelper] Failed to load group details', id, err);
+      return null;
+    }
+  });
+}
+
 function mapGroup(g) {
   return {
     id: Number(g.id),
@@ -153,9 +219,9 @@ function mapGroup(g) {
     subjectName: norm(g.subject_name),
     subjectId: Number(g.subject_id),
     classLevelId: Number(g.class_level_id),
-    classUnitId: Number(g.class_unit_id) || null,
-    classUnitName: norm(g.class_unit_name),
-    classUnitIds: Array.isArray(g.class_unit_ids) ? g.class_unit_ids.map((x) => Number(x)).filter(Number.isFinite) : [],
+    classUnitId: collectClassUnitIds(g)[0] || null,
+    classUnitName: collectClassUnits(g)[0]?.name || norm(g.class_unit_name),
+    classUnitIds: collectClassUnitIds(g),
     attestationScheduleId: Number(g.attestation_periods_schedule_id) || null,
     studentCount: Number(g.student_count || 0),
     relatedGroupIds: Array.isArray(g.related_group_ids) ? g.related_group_ids.map((x) => Number(x)).filter(Number.isFinite) : []
@@ -231,7 +297,7 @@ async function loadGroupsForAnalytics({ meshApi, fetchPaged, config, auth, saved
   });
 
   const schoolId = Number(config.schoolId) || Number(teacher?.school_id) || 0;
-  const academicYearId = Number(config.academicYearId) || 13;
+  const academicYearId = Number(config.academicYearId) || DEFAULT_ACADEMIC_YEAR_ID;
   const envClassUnitIds = Array.isArray(config.analyticsClassUnitIds)
     ? config.analyticsClassUnitIds.map((x) => Number(x)).filter(Number.isFinite)
     : [];
@@ -243,14 +309,13 @@ async function loadGroupsForAnalytics({ meshApi, fetchPaged, config, auth, saved
   const teacherGroupsRaw = await fetchGroupsByIds(fetchPaged, groupIds, schoolId, academicYearId, config.groupsPerPage, statusCb);
 
   const classOptionMap = new Map();
-  teacherGroupsRaw.forEach((g) => {
-    const cid = Number(g.class_unit_id);
-    if (Number.isFinite(cid)) classOptionMap.set(cid, norm(g.class_unit_name) || `Класс ${cid}`);
-    const cids = Array.isArray(g.class_unit_ids) ? g.class_unit_ids.map((x) => Number(x)).filter(Number.isFinite) : [];
-    cids.forEach((id) => {
-      if (!classOptionMap.has(id)) classOptionMap.set(id, `Класс ${id}`);
-    });
-  });
+  addClassOptionsFromGroups(classOptionMap, teacherGroupsRaw);
+
+  if (!classOptionMap.size && groupIds.length) {
+    const detailIds = teacherGroupsRaw.length ? teacherGroupsRaw.map((g) => g?.id) : groupIds;
+    const detailedGroups = (await fetchGroupDetails(meshApi, detailIds, statusCb)).filter(Boolean);
+    addClassOptionsFromGroups(classOptionMap, detailedGroups);
+  }
 
   extractTeacherClassUnitIds(teacher).forEach((id) => {
     if (!classOptionMap.has(id)) classOptionMap.set(id, `Класс ${id}`);
@@ -266,14 +331,12 @@ async function loadGroupsForAnalytics({ meshApi, fetchPaged, config, auth, saved
       school_id: schoolId,
       with_periods_schedule_id: true
     }, config.groupsPerPage || 300, 20);
-    fallbackGroups.forEach((g) => {
-      const cid = Number(g.class_unit_id);
-      if (Number.isFinite(cid)) classOptionMap.set(cid, norm(g.class_unit_name) || `Класс ${cid}`);
-      const cids = Array.isArray(g.class_unit_ids) ? g.class_unit_ids.map((x) => Number(x)).filter(Number.isFinite) : [];
-      cids.forEach((id) => {
-        if (!classOptionMap.has(id)) classOptionMap.set(id, `Класс ${id}`);
-      });
-    });
+    addClassOptionsFromGroups(classOptionMap, fallbackGroups);
+
+    if (!classOptionMap.size && fallbackGroups.length) {
+      const detailedFallbackGroups = (await fetchGroupDetails(meshApi, fallbackGroups.map((g) => g?.id), statusCb)).filter(Boolean);
+      addClassOptionsFromGroups(classOptionMap, detailedFallbackGroups);
+    }
   }
 
   const classOptions = [...classOptionMap.entries()]
@@ -613,7 +676,7 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
       query: { with_assigned_groups: true, with_replacement_groups: true }
     });
     const schoolId = Number(config.schoolId) || Number(teacher?.school_id) || 0;
-    academicYearId = Number(config.academicYearId) || 13;
+    academicYearId = Number(config.academicYearId) || DEFAULT_ACADEMIC_YEAR_ID;
     const groupsRaw = await fetchGroupsByIds(fetchPaged, explicitGroupIds, schoolId, academicYearId, config.groupsPerPage, statusCb);
     statusCb(`Уточняем выбранные группы (${groupsRaw.length})...`);
     const detailedGroupsRaw = await parallelMap(groupsRaw, 4, async (g) => {

@@ -1,6 +1,7 @@
 import { norm, parallelMap } from '../utils.js';
 import { loadGroupsForMarking } from './marking.js';
 
+const DEFAULT_ACADEMIC_YEAR_ID = 14;
 const SOFT_SKILLS_SUBSYSTEM = 'teacherweb';
 
 function studentName(profile) {
@@ -54,7 +55,7 @@ export async function buildSoftSkillsPlan({ meshApi, fetchPaged, config, auth, s
   await parallelMap(groups, 4, async (group, idx) => {
     statusCb(`Получаем учеников... ${idx + 1}/${groups.length}`);
     const profiles = await fetchPaged('/api/ej/core/teacher/v1/student_profiles', {
-      academic_year_id: Number(config.academicYearId) || 13,
+      academic_year_id: Number(config.academicYearId) || DEFAULT_ACADEMIC_YEAR_ID,
       class_unit_ids: (group.classUnitIds || []).join(','),
       group_ids: group.id,
       with_groups: true,

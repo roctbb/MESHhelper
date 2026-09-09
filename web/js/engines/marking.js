@@ -1,6 +1,8 @@
 import { norm, normalizeName, parallelMap } from '../utils.js';
 import { buildSubjectRows } from './analytics.js';
 
+const DEFAULT_ACADEMIC_YEAR_ID = 14;
+
 function mapGroup(g) {
   return {
     id: Number(g.id),
@@ -148,7 +150,7 @@ function formatControlForm(f) {
 
 async function loadControlFormsContext({ meshApi, fetchPaged, config, auth, gid }) {
   const group = await meshApi(`/api/ej/plan/teacher/v1/groups/${gid}`);
-  const academicYearId = Number(config.academicYearId) || 13;
+  const academicYearId = Number(config.academicYearId) || DEFAULT_ACADEMIC_YEAR_ID;
   let teacher = null;
   if (auth?.profileId) {
     teacher = await meshApi(`/api/ej/core/teacher/v1/teacher_profiles/${auth.profileId}`, {
@@ -212,7 +214,7 @@ export async function loadGroupsForMarking({ meshApi, fetchPaged, config, auth, 
   });
 
   const schoolId = Number(config.schoolId) || Number(teacher?.school_id) || 0;
-  const academicYearId = Number(config.academicYearId) || 13;
+  const academicYearId = Number(config.academicYearId) || DEFAULT_ACADEMIC_YEAR_ID;
 
   const rawIds = Array.isArray(teacher?.assigned_group_ids) && teacher.assigned_group_ids.length
     ? teacher.assigned_group_ids
@@ -271,7 +273,7 @@ export async function buildMarkingPreview({ meshApi, fetchPaged, config, auth, g
 
   const { group, controlForms } = await loadControlFormsContext({ meshApi, fetchPaged, config, auth, gid });
   const classUnitIds = Array.isArray(group.class_unit_ids) ? group.class_unit_ids.map((x) => Number(x)).filter(Number.isFinite) : [];
-  const academicYearId = Number(config.academicYearId) || 13;
+  const academicYearId = Number(config.academicYearId) || DEFAULT_ACADEMIC_YEAR_ID;
 
   const students = await fetchPaged('/api/ej/core/teacher/v1/student_profiles', {
     academic_year_id: academicYearId,
