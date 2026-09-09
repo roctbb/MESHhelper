@@ -71,109 +71,74 @@ test('zero membership count does not prevent requesting group marks', async () =
   assert.equal(requests.filter((r) => r.path.endsWith('/marks')).length, 1);
 });
 
-function yearMismatchFixture({ explicit = false, years = [13, 13], withPeriods = true } = {}) {
+function yearMismatchFixture({ explicit = false } = {}) {
   const { options, requests } = fixture([]);
   options.config.exportStartAt = '2026-09-01';
   options.config.exportStopAt = '2027-08-31';
   options.groupIds = explicit ? [10, 11] : [];
-  const group = (id, year) => ({
-    id, academic_year_id: year, class_unit_id: 100, subject_id: id,
-    student_count: 20, attestation_periods_schedule_id: 200
-  });
   options.meshApi = async (path) => {
     if (path.includes('/teacher_profiles/')) return { school_id: 1, assigned_group_ids: [10, 11] };
-    if (path.includes('/groups/')) {
-      const id = Number(path.split('/').at(-1));
-      return group(id, years[id - 10]);
-    }
-    if (path.includes('/attestation_periods_schedules/')) return { periods: withPeriods ? [
-      { id: 1, name: 'Period 1', begin_date: '2025-09-01', end_date: '2025-11-30' },
-      { id: 2, name: 'Period 2', begin_date: '2025-12-01', end_date: '2026-05-31' }
-    ] : [] };
-    throw new Error(`Unexpected request: ${path}`);
+    assert.fail(`Should not inspect archived groups or periods: ${path}`);
   };
   options.fetchPaged = async (path, query) => {
     requests.push({ path, query });
     if (path.endsWith('/groups')) {
       if (query.academic_year_id !== 13) return [];
-      return (query.class_unit_ids ? [10, 11, 12] : [10, 11]).map((id) => group(id, 13));
+      assert.fail('Should not switch to year 13');
     }
     return [];
   };
   return { options, requests };
 }
 
-test('empty configured year falls back to group year and loads all class subjects for its dates', async () => {
+test('empty configured year stops after two list requests without loading archived data', async () => {
   const { options, requests } = yearMismatchFixture();
-  const data = await loadAnalyticsData(options);
-  assert.equal(data.academicYearId, 13);
-  assert.deepEqual(requests.filter((r) => r.path.endsWith('/groups')).map((r) => r.query.academic_year_id), [14, 13]);
-  assert.equal(requests.find((r) => r.path.endsWith('/student_profiles')).query.academic_year_id, 13);
-  const marks = requests.filter((r) => r.path.endsWith('/marks'));
-  assert.equal(marks.length, 3);
-  assert.ok(marks.every((r) => r.query.lesson_date_from === '01.09.2025' && r.query.lesson_date_to === '31.05.2026'));
+  await assert.rejects(loadAnalyticsData(options), /выбранный учебный год \(ID 14\)/);
+  assert.equal(requests.length, 2);
+  assert.ok(requests.every((r) => r.path.endsWith('/groups') && r.query.academic_year_id === 14));
 });
 
-test('explicit groups also retry their observed academic year', async () => {
+test('explicit groups missing from configured year fail without retrying another year', async () => {
   const { options, requests } = yearMismatchFixture({ explicit: true });
-  const data = await loadAnalyticsData(options);
-  assert.equal(data.academicYearId, 13);
-  assert.deepEqual(requests.filter((r) => r.path.endsWith('/groups')).map((r) => r.query.academic_year_id), [14, 13]);
-  assert.equal(requests.filter((r) => r.path.endsWith('/marks')).length, 2);
+  await assert.rejects(loadAnalyticsData(options), /выбранный учебный год \(ID 14\)/);
+  assert.equal(requests.length, 1);
+  assert.equal(requests[0].query.academic_year_id, 14);
 });
 
-test('conflicting observed years do not select an arbitrary year', async () => {
-  const { options, requests } = yearMismatchFixture({ years: [12, 13] });
-  await assert.rejects(loadAnalyticsData(options), /разным учебным годам/);
-  assert.equal(requests.filter((r) => r.path.endsWith('/groups')).length, 1);
+test('groups explicitly belonging to another year never enter the report', async () => {
+  const { options, requests } = fixture([
+    { id: 10, class_unit_id: 100, academic_year_id: 14 },
+    { id: 11, class_unit_id: 100, academic_year_id: 13 }
+  ]);
+  await loadAnalyticsData(options);
+  assert.deepEqual(requests.filter((r) => r.path.endsWith('/marks')).map((r) => r.query.group_ids), ['10']);
 });
 
-test('missing year in one detail does not switch based on partial evidence', async () => {
-  const { options, requests } = yearMismatchFixture({ years: [13, null] });
-  await assert.rejects(loadAnalyticsData(options), /Учебный год ID: 14/);
-  assert.ok(requests.filter((r) => r.path.endsWith('/groups')).every((r) => r.query.academic_year_id === 14));
-});
-
-test('year fallback cannot silently use configured dates if schedules are unavailable', async () => {
-  const { options, requests } = yearMismatchFixture({ withPeriods: false });
-  await assert.rejects(loadAnalyticsData(options), /не удалось получить его периоды/);
-  assert.equal(requests.filter((r) => r.path.endsWith('/marks')).length, 0);
-});
-
-test('49 archived groups with zero counts load historical marks through 35 subject groups', async () => {
-  const { options, requests } = yearMismatchFixture();
+test('managed class is used when teacher assignments are stale, without group detail requests', async () => {
+  const { options, requests } = fixture([], { teacher: { managed_class_unit_ids: [100] } });
   const fetchPaged = options.fetchPaged;
   options.fetchPaged = async (path, query) => {
     const result = await fetchPaged(path, query);
-    if (path.endsWith('/groups') && query.class_unit_ids && query.academic_year_id === 13) {
-      const groups = Array.from({ length: 35 }, (_, i) => ({
-        ...result[0], id: 10 + i, subject_id: 10 + i, student_count: 0,
-        attestation_periods_schedule_id: i === 34 ? null : 200
-      }));
-      const metaGroups = Array.from({ length: 14 }, (_, i) => ({
-        id: 1000 + i, subject_id: 10 + i, subgroup_ids: [10 + i], is_metagroup: true,
-        student_count: 0
-      }));
-      return [...groups, ...metaGroups];
-    }
-    if (path.endsWith('/student_profiles')) {
-      assert.equal(query.academic_year_id, 13);
-      assert.equal(query.class_unit_ids, '100');
-      assert.equal(query.with_archived_groups, true);
-      assert.equal(query.with_transferred, true);
-      assert.equal(query.with_deleted, true);
-      return [{ id: 501, short_name: 'Historical student' }];
-    }
-    if (path.endsWith('/marks') && query.group_ids === '10,1000') {
-      return [{ student_profile_id: 501, name: '5', date: '2025-10-01' }];
+    if (path.endsWith('/groups') && query.class_unit_ids === '100') {
+      return [{ id: 20, class_unit_id: 100, academic_year_id: 14 }];
     }
     return result;
   };
+  const meshApi = options.meshApi;
+  options.meshApi = async (path) => {
+    assert.ok(!path.includes('/groups/'));
+    return meshApi(path);
+  };
   const data = await loadAnalyticsData(options);
-  assert.equal(requests.filter((r) => r.path.endsWith('/marks')).length, 35);
-  assert.deepEqual(data.students, ['Historical student']);
-  assert.equal(data.byStudent['Historical student'][0].numericMark, 5);
-  assert.equal(data.byStudent['Historical student'][0].date, '01.10.2025');
+  assert.equal(data.academicYearId, 14);
+  assert.deepEqual(data.selectedClassUnitIds, [100]);
+  const students = requests.find((r) => r.path.endsWith('/student_profiles')).query;
+  assert.equal(students.with_archived_groups, false);
+  assert.equal(students.with_transferred, false);
+  assert.equal(students.with_deleted, false);
+  const marks = requests.find((r) => r.path.endsWith('/marks')).query;
+  assert.equal(marks.lesson_date_from, '01.09.2026');
+  assert.equal(marks.lesson_date_to, '31.08.2027');
 });
 
 test('explicit zero-count groups also retain historical marks', async () => {

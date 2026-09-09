@@ -212,19 +212,10 @@ async function fetchGroupDetails(meshApi, groupIds, statusCb) {
   });
 }
 
-function resolveGroupAcademicYear(groups, configuredYearId) {
-  const years = groups.map((g) => Number(g?.academic_year_id));
-  const knownYears = [...new Set(years.filter((id) => Number.isInteger(id) && id > 0))];
-  console.info('[MESHhelper] Academic year discovery', JSON.stringify({
-    configuredYearId,
-    groupYearIds: knownYears,
-    unresolvedGroups: years.filter((id) => !Number.isInteger(id) || id <= 0).length
-  }));
-  if (knownYears.length > 1 && !knownYears.includes(configuredYearId)) {
-    throw new Error(`Группы относятся к разным учебным годам (${knownYears.join(', ')}), а выбран ID ${configuredYearId}. Уточните учебный год в настройках сервера`);
-  }
-  if (knownYears.length === 1 && years.every((id) => id === knownYears[0])) return knownYears[0];
-  return configuredYearId;
+function groupsForYear(groups, academicYearId) {
+  return groups.filter((g) => g && (
+    g.academic_year_id == null || Number(g.academic_year_id) === academicYearId
+  ));
 }
 
 function mapGroup(g) {
@@ -252,20 +243,22 @@ function getStudentCount(g) {
 }
 
 function selectAnalyticsGroups(rawGroups, academicYearId) {
-  const candidates = attachRelatedGroupIds(rawGroups).filter((g) => !g.is_metagroup);
+  const yearGroups = groupsForYear(rawGroups, academicYearId);
+  const candidates = attachRelatedGroupIds(yearGroups).filter((g) => !g.is_metagroup);
   // Membership counts do not determine whether historical marks exist.
   const groups = candidates.map(mapGroup);
   const summary = {
     academicYearId,
     received: rawGroups.length,
-    metagroups: rawGroups.length - candidates.length,
+    otherYearGroups: rawGroups.length - yearGroups.length,
+    metagroups: yearGroups.length - candidates.length,
     zeroStudentCount: candidates.filter((g) => getStudentCount(g) === 0).length,
     unknownStudentCount: candidates.filter((g) => getStudentCount(g) === null).length,
     selected: groups.length
   };
   console.info('[MESHhelper] Analytics groups', JSON.stringify(summary));
   if (!groups.length) {
-    throw new Error(`Нет доступных групп для аналитики: получено ${summary.received}, метагрупп ${summary.metagroups}. Учебный год ID: ${academicYearId}`);
+    throw new Error(`Нет доступных групп для аналитики за выбранный учебный год (ID ${academicYearId}): получено ${summary.received}, метагрупп ${summary.metagroups}. Проверьте доступность классов за этот год в журнале МЭШ`);
   }
   return groups;
 }
@@ -292,6 +285,7 @@ function extractTeacherClassUnitIds(teacher) {
   const ids = [];
   const candidates = [
     teacher?.class_unit_ids,
+    teacher?.managed_class_unit_ids,
     teacher?.mentor_class_unit_ids,
     teacher?.curator_class_unit_ids,
     teacher?.assigned_class_unit_ids
@@ -339,7 +333,7 @@ async function loadGroupsForAnalytics({ meshApi, fetchPaged, config, auth, saved
   });
 
   const schoolId = Number(config.schoolId) || Number(teacher?.school_id) || 0;
-  let academicYearId = Number(config.academicYearId) || DEFAULT_ACADEMIC_YEAR_ID;
+  const academicYearId = Number(config.academicYearId) || DEFAULT_ACADEMIC_YEAR_ID;
   const envClassUnitIds = Array.isArray(config.analyticsClassUnitIds)
     ? config.analyticsClassUnitIds.map((x) => Number(x)).filter((id) => Number.isInteger(id) && id > 0)
     : [];
@@ -348,19 +342,12 @@ async function loadGroupsForAnalytics({ meshApi, fetchPaged, config, auth, saved
     ? teacher.assigned_group_ids
     : teacher?.group_ids;
   const groupIds = (Array.isArray(rawGroupIds) ? rawGroupIds : []).map((x) => Number(x)).filter(Number.isFinite);
-  const teacherGroupsRaw = await fetchGroupsByIds(fetchPaged, groupIds, schoolId, academicYearId, config.groupsPerPage, statusCb);
+  const teacherGroupsRaw = groupsForYear(
+    await fetchGroupsByIds(fetchPaged, groupIds, schoolId, academicYearId, config.groupsPerPage, statusCb), academicYearId
+  );
 
   const classOptionMap = new Map();
   addClassOptionsFromGroups(classOptionMap, teacherGroupsRaw);
-
-  if (!classOptionMap.size && groupIds.length) {
-    const detailIds = teacherGroupsRaw.length ? teacherGroupsRaw.map((g) => g?.id) : groupIds;
-    const detailedGroups = await fetchGroupDetails(meshApi, detailIds, statusCb);
-    if (!teacherGroupsRaw.length) academicYearId = resolveGroupAcademicYear(detailedGroups, academicYearId);
-    addClassOptionsFromGroups(classOptionMap, detailedGroups.filter((g) => g && (
-      g.academic_year_id == null || Number(g.academic_year_id) === academicYearId
-    )));
-  }
 
   extractTeacherClassUnitIds(teacher).forEach((id) => {
     if (!classOptionMap.has(id)) classOptionMap.set(id, `Класс ${id}`);
@@ -369,25 +356,30 @@ async function loadGroupsForAnalytics({ meshApi, fetchPaged, config, auth, saved
     if (!classOptionMap.has(id)) classOptionMap.set(id, `Класс ${id}`);
   });
 
+  if (!classOptionMap.size && teacherGroupsRaw.length) {
+    const detailedGroups = await fetchGroupDetails(meshApi, teacherGroupsRaw.map((g) => g.id), statusCb);
+    addClassOptionsFromGroups(classOptionMap, groupsForYear(detailedGroups, academicYearId));
+  }
+
   if (!classOptionMap.size && !envClassUnitIds.length) {
     statusCb('Классы не найдены в профиле, пробуем общий список доступных групп...');
-    const fallbackGroups = await fetchPaged('/api/ej/plan/teacher/v1/groups', {
+    const fallbackGroups = groupsForYear(await fetchPaged('/api/ej/plan/teacher/v1/groups', {
       academic_year_id: academicYearId,
       school_id: schoolId,
       with_periods_schedule_id: true
-    }, config.groupsPerPage || 300, 20);
+    }, config.groupsPerPage || 300, 20), academicYearId);
     addClassOptionsFromGroups(classOptionMap, fallbackGroups);
 
     if (!classOptionMap.size && fallbackGroups.length) {
       const detailedFallbackGroups = (await fetchGroupDetails(meshApi, fallbackGroups.map((g) => g?.id), statusCb)).filter(Boolean);
-      addClassOptionsFromGroups(classOptionMap, detailedFallbackGroups);
+      addClassOptionsFromGroups(classOptionMap, groupsForYear(detailedFallbackGroups, academicYearId));
     }
   }
 
   const classOptions = [...classOptionMap.entries()]
     .map(([id, name]) => ({ id: Number(id), name }))
     .sort((a, b) => a.name.localeCompare(b.name, 'ru'));
-  if (!classOptions.length) throw new Error('Не удалось определить классы для аналитики');
+  if (!classOptions.length) throw new Error(`Не удалось определить классы для аналитики за выбранный учебный год (ID ${academicYearId}). Проверьте доступность классов за этот год в журнале МЭШ`);
 
   const selectedClassUnitId = savedClassFilter === '__all__' || classOptions.some((x) => String(x.id) === savedClassFilter)
     ? savedClassFilter
@@ -719,10 +711,12 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
     });
     const schoolId = Number(config.schoolId) || Number(teacher?.school_id) || 0;
     academicYearId = Number(config.academicYearId) || DEFAULT_ACADEMIC_YEAR_ID;
-    const groupsRaw = await fetchGroupsByIds(fetchPaged, explicitGroupIds, schoolId, academicYearId, config.groupsPerPage, statusCb);
+    const groupsRaw = groupsForYear(
+      await fetchGroupsByIds(fetchPaged, explicitGroupIds, schoolId, academicYearId, config.groupsPerPage, statusCb), academicYearId
+    );
+    if (!groupsRaw.length) selectAnalyticsGroups([], academicYearId);
     statusCb(`Уточняем выбранные группы (${explicitGroupIds.length})...`);
-    const candidates = groupsRaw.length ? groupsRaw : explicitGroupIds.map((id) => ({ id }));
-    let detailedGroupsRaw = await parallelMap(candidates, 4, async (g) => {
+    const detailedGroupsRaw = await parallelMap(groupsRaw, 4, async (g) => {
       try {
         return { ...g, ...await meshApi(`/api/ej/plan/teacher/v1/groups/${g.id}`) };
       } catch (err) {
@@ -730,12 +724,6 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
         return g;
       }
     });
-    if (!groupsRaw.length) {
-      academicYearId = resolveGroupAcademicYear(detailedGroupsRaw, academicYearId);
-      const verifiedGroups = await fetchGroupsByIds(fetchPaged, explicitGroupIds, schoolId, academicYearId, config.groupsPerPage, statusCb);
-      const detailsById = new Map(detailedGroupsRaw.map((g) => [Number(g.id), g]));
-      detailedGroupsRaw = verifiedGroups.map((g) => ({ ...g, ...detailsById.get(Number(g.id)) }));
-    }
     groups = selectAnalyticsGroups(detailedGroupsRaw, academicYearId);
 
     const classOptionMap = new Map();
@@ -768,10 +756,10 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
     group_ids: explicitGroupIds.length ? explicitGroupIds.join(',') : '',
     with_groups: true,
     with_home_based_periods: true,
-    with_deleted: true,
+    with_deleted: false,
     with_final_marks: true,
-    with_archived_groups: true,
-    with_transferred: true
+    with_archived_groups: false,
+    with_transferred: false
   };
   const profiles = await fetchPaged('/api/ej/core/teacher/v1/student_profiles', studentProfilesQuery, 300, 25);
 
@@ -812,30 +800,20 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
     }
   });
   const loadedScheduleBoundaries = [...trimesterBoundariesBySchedule.values()].filter((x) => x.length);
-  const yearChanged = academicYearId !== (Number(config.academicYearId) || DEFAULT_ACADEMIC_YEAR_ID);
-  if (yearChanged && !loadedScheduleBoundaries.length) {
-    throw new Error(`Определён учебный год ID ${academicYearId}, но не удалось получить его периоды. Проверьте учебный год и даты в настройках сервера`);
-  }
-  const activeTrimesterBoundaries = loadedScheduleBoundaries.length === 1 || yearChanged
+  const activeTrimesterBoundaries = loadedScheduleBoundaries.length === 1
     ? loadedScheduleBoundaries[0]
     : sortPeriodBoundaries(config.trimesterBoundaries || []);
 
-  const schedulePeriods = loadedScheduleBoundaries.flat();
-  const periodStart = yearChanged
-    ? schedulePeriods.map((p) => p.start).sort((a, b) => parseBoundaryDate(a) - parseBoundaryDate(b))[0]
-    : config.exportStartAt || '2026-09-01';
-  const periodEnd = yearChanged
-    ? schedulePeriods.map((p) => p.end).sort((a, b) => parseBoundaryDate(b) - parseBoundaryDate(a))[0]
-    : config.exportStopAt || '2027-08-31';
-  const from = toRuDate(periodStart);
-  const to = toRuDate(periodEnd);
-  console.info('[MESHhelper] Analytics period', JSON.stringify({ academicYearId, yearChanged, from, to }));
+  const from = toRuDate(config.exportStartAt || '2026-09-01');
+  const to = toRuDate(config.exportStopAt || '2027-08-31');
+  console.info('[MESHhelper] Analytics period', JSON.stringify({ academicYearId, from, to }));
   const rows = [];
   let marksReceived = 0;
   let marksWithoutProfile = 0;
+  let completedGroups = 0;
 
   statusCb(`Получаем отметки по группам (${groups.length})...`);
-  await parallelMap(groups, 4, async (group, idx) => {
+  await parallelMap(groups, 4, async (group) => {
     const extraMarkGroupIds = Array.isArray(markGroupIdsByGroupId?.[group.id])
       ? markGroupIdsByGroupId[group.id].map((x) => Number(x)).filter(Number.isFinite)
       : [];
@@ -953,7 +931,8 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
       });
     }
 
-    statusCb(`Получаем отметки... ${idx + 1}/${groups.length}`);
+    completedGroups += 1;
+    statusCb(`Получаем отметки... ${completedGroups}/${groups.length}`);
   });
 
   statusCb('Добавляем выставленные триместровые...');
