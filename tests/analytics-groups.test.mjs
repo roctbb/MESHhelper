@@ -24,7 +24,7 @@ function fixture(groups, { teacher = {}, details = {}, explicit = false } = {}) 
   return { options, requests };
 }
 
-test('analytics keeps unknown student counts but skips confirmed empty and meta groups', async () => {
+test('analytics requests marks regardless of student count and skips standalone meta groups', async () => {
   const groups = [undefined, null, '', 0, '0', 25, '12'].map((student_count, i) => ({
     id: 10 + i, class_unit_id: 100, subject_id: 5, student_count
   }));
@@ -32,7 +32,7 @@ test('analytics keeps unknown student counts but skips confirmed empty and meta 
   const { options, requests } = fixture(groups);
   await loadAnalyticsData(options);
   const markGroups = requests.filter((r) => r.path.endsWith('/marks')).map((r) => r.query.group_ids);
-  assert.deepEqual(markGroups.sort(), ['10', '11', '12', '15', '16']);
+  assert.deepEqual(markGroups.sort(), ['10', '11', '12', '13', '14', '15', '16']);
 });
 
 test('null class references trigger detail lookup instead of querying class zero', async () => {
@@ -62,12 +62,13 @@ test('explicit group details retain class and subject metadata from the list', a
 
 test('empty API response is reported separately from excluded groups', async () => {
   const { options } = fixture([], { teacher: { class_unit_ids: [100] } });
-  await assert.rejects(loadAnalyticsData(options), /получено 0, метагрупп 0, пустых 0/);
+  await assert.rejects(loadAnalyticsData(options), /получено 0, метагрупп 0/);
 });
 
-test('known-empty groups produce counts in the error', async () => {
-  const { options } = fixture([{ id: 10, class_unit_id: 100, student_count: 0 }]);
-  await assert.rejects(loadAnalyticsData(options), /получено 1, метагрупп 0, пустых 1/);
+test('zero membership count does not prevent requesting group marks', async () => {
+  const { options, requests } = fixture([{ id: 10, class_unit_id: 100, student_count: 0 }]);
+  await loadAnalyticsData(options);
+  assert.equal(requests.filter((r) => r.path.endsWith('/marks')).length, 1);
 });
 
 function yearMismatchFixture({ explicit = false, years = [13, 13], withPeriods = true } = {}) {
@@ -137,4 +138,54 @@ test('year fallback cannot silently use configured dates if schedules are unavai
   const { options, requests } = yearMismatchFixture({ withPeriods: false });
   await assert.rejects(loadAnalyticsData(options), /не удалось получить его периоды/);
   assert.equal(requests.filter((r) => r.path.endsWith('/marks')).length, 0);
+});
+
+test('49 archived groups with zero counts load historical marks through 35 subject groups', async () => {
+  const { options, requests } = yearMismatchFixture();
+  const fetchPaged = options.fetchPaged;
+  options.fetchPaged = async (path, query) => {
+    const result = await fetchPaged(path, query);
+    if (path.endsWith('/groups') && query.class_unit_ids && query.academic_year_id === 13) {
+      const groups = Array.from({ length: 35 }, (_, i) => ({
+        ...result[0], id: 10 + i, subject_id: 10 + i, student_count: 0,
+        attestation_periods_schedule_id: i === 34 ? null : 200
+      }));
+      const metaGroups = Array.from({ length: 14 }, (_, i) => ({
+        id: 1000 + i, subject_id: 10 + i, subgroup_ids: [10 + i], is_metagroup: true,
+        student_count: 0
+      }));
+      return [...groups, ...metaGroups];
+    }
+    if (path.endsWith('/student_profiles')) {
+      assert.equal(query.academic_year_id, 13);
+      assert.equal(query.class_unit_ids, '100');
+      assert.equal(query.with_archived_groups, true);
+      assert.equal(query.with_transferred, true);
+      assert.equal(query.with_deleted, true);
+      return [{ id: 501, short_name: 'Historical student' }];
+    }
+    if (path.endsWith('/marks') && query.group_ids === '10,1000') {
+      return [{ student_profile_id: 501, name: '5', date: '2025-10-01' }];
+    }
+    return result;
+  };
+  const data = await loadAnalyticsData(options);
+  assert.equal(requests.filter((r) => r.path.endsWith('/marks')).length, 35);
+  assert.deepEqual(data.students, ['Historical student']);
+  assert.equal(data.byStudent['Historical student'][0].numericMark, 5);
+  assert.equal(data.byStudent['Historical student'][0].date, '01.10.2025');
+});
+
+test('explicit zero-count groups also retain historical marks', async () => {
+  const { options, requests } = fixture([{ id: 10, class_unit_id: 100, student_count: 0 }], { explicit: true });
+  const fetchPaged = options.fetchPaged;
+  options.fetchPaged = async (path, query) => {
+    const result = await fetchPaged(path, query);
+    if (path.endsWith('/student_profiles')) return [{ id: 501, short_name: 'Historical student' }];
+    if (path.endsWith('/marks')) return [{ student_profile_id: 501, name: '4', date: '2026-09-02' }];
+    return result;
+  };
+  const data = await loadAnalyticsData(options);
+  assert.equal(requests.find((r) => r.path.endsWith('/student_profiles')).query.group_ids, '10');
+  assert.equal(data.byStudent['Historical student'][0].numericMark, 4);
 });

@@ -253,19 +253,19 @@ function getStudentCount(g) {
 
 function selectAnalyticsGroups(rawGroups, academicYearId) {
   const candidates = attachRelatedGroupIds(rawGroups).filter((g) => !g.is_metagroup);
-  // A missing count is not evidence that a group has no students.
-  const groups = candidates.filter((g) => getStudentCount(g) !== 0).map(mapGroup);
+  // Membership counts do not determine whether historical marks exist.
+  const groups = candidates.map(mapGroup);
   const summary = {
     academicYearId,
     received: rawGroups.length,
     metagroups: rawGroups.length - candidates.length,
-    empty: candidates.filter((g) => getStudentCount(g) === 0).length,
+    zeroStudentCount: candidates.filter((g) => getStudentCount(g) === 0).length,
     unknownStudentCount: candidates.filter((g) => getStudentCount(g) === null).length,
     selected: groups.length
   };
   console.info('[MESHhelper] Analytics groups', JSON.stringify(summary));
   if (!groups.length) {
-    throw new Error(`Нет доступных групп для аналитики: получено ${summary.received}, метагрупп ${summary.metagroups}, пустых ${summary.empty}. Учебный год ID: ${academicYearId}`);
+    throw new Error(`Нет доступных групп для аналитики: получено ${summary.received}, метагрупп ${summary.metagroups}. Учебный год ID: ${academicYearId}`);
   }
   return groups;
 }
@@ -768,10 +768,10 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
     group_ids: explicitGroupIds.length ? explicitGroupIds.join(',') : '',
     with_groups: true,
     with_home_based_periods: true,
-    with_deleted: false,
+    with_deleted: true,
     with_final_marks: true,
-    with_archived_groups: false,
-    with_transferred: false
+    with_archived_groups: true,
+    with_transferred: true
   };
   const profiles = await fetchPaged('/api/ej/core/teacher/v1/student_profiles', studentProfilesQuery, 300, 25);
 
@@ -813,7 +813,7 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
   });
   const loadedScheduleBoundaries = [...trimesterBoundariesBySchedule.values()].filter((x) => x.length);
   const yearChanged = academicYearId !== (Number(config.academicYearId) || DEFAULT_ACADEMIC_YEAR_ID);
-  if (yearChanged && groups.some((g) => !trimesterBoundariesBySchedule.get(g.attestationScheduleId)?.length)) {
+  if (yearChanged && !loadedScheduleBoundaries.length) {
     throw new Error(`Определён учебный год ID ${academicYearId}, но не удалось получить его периоды. Проверьте учебный год и даты в настройках сервера`);
   }
   const activeTrimesterBoundaries = loadedScheduleBoundaries.length === 1 || yearChanged
@@ -831,6 +831,8 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
   const to = toRuDate(periodEnd);
   console.info('[MESHhelper] Analytics period', JSON.stringify({ academicYearId, yearChanged, from, to }));
   const rows = [];
+  let marksReceived = 0;
+  let marksWithoutProfile = 0;
 
   statusCb(`Получаем отметки по группам (${groups.length})...`);
   await parallelMap(groups, 4, async (group, idx) => {
@@ -848,9 +850,13 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
       with_non_numeric_entries: true
     }, config.marksPerPage || 300, 220);
 
+    marksReceived += marks.length;
     marks.forEach((item) => {
       const studentProfileId = Number(item.student_profile_id);
-      if (!studentNameById.has(studentProfileId)) return;
+      if (!studentNameById.has(studentProfileId)) {
+        marksWithoutProfile += 1;
+        return;
+      }
       const student = studentNameById.get(studentProfileId) || `ID ${studentProfileId}`;
       const parsed = parseMarkValue(item.name || item.values?.[0]?.grade?.origin, item.values);
       if (!parsed) return;
@@ -1016,6 +1022,14 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
   }
 
   const byStudent = {};
+  console.info('[MESHhelper] Analytics data', JSON.stringify({
+    academicYearId,
+    groups: groups.length,
+    profiles: profiles.length,
+    marksReceived,
+    marksWithoutProfile,
+    rows: rows.length
+  }));
   rows.forEach((r) => {
     if (!byStudent[r.student]) byStudent[r.student] = [];
     byStudent[r.student].push(r);
