@@ -5,6 +5,13 @@ export class MarkingScreen {
     this.refs = refs;
     this.state = state;
     this.callbacks = callbacks;
+    this.previewVersion = 0;
+  }
+
+  invalidatePreview() {
+    this.previewVersion += 1;
+    this.state.marking.preview = null;
+    this.refs.applyBtn.disabled = true;
   }
 
   statusBadge(status) {
@@ -59,8 +66,7 @@ export class MarkingScreen {
     this.state.marking.selectedControlFormId = String(this.refs.controlFormSelect.value || this.state.marking.selectedControlFormId || '');
     this.state.marking.selectedControlFormLabel = String(selectedOption?.textContent || this.state.marking.selectedControlFormLabel || '');
     this.state.marking.comment = comment;
-    this.state.marking.preview = null;
-    this.refs.applyBtn.disabled = true;
+    this.invalidatePreview();
     this.refs.controlFormSelect.innerHTML = '<option value="">Загрузка...</option>';
     if (!groupId) {
       this.state.marking.controlForms = [];
@@ -106,16 +112,24 @@ export class MarkingScreen {
     });
 
     this.refs.controlFormSelect.addEventListener('change', () => {
+      this.invalidatePreview();
       const selectedOption = this.refs.controlFormSelect.selectedOptions?.[0] || null;
       this.state.marking.selectedControlFormId = String(this.refs.controlFormSelect.value || '');
       this.state.marking.selectedControlFormLabel = String(selectedOption?.textContent || '');
     });
 
     this.refs.commentInput.addEventListener('input', () => {
+      this.invalidatePreview();
       this.state.marking.comment = this.refs.commentInput.value;
     });
 
+    [this.refs.namesInput, this.refs.gradesInput].forEach((input) => {
+      input.addEventListener('input', () => this.invalidatePreview());
+    });
+
     this.refs.previewBtn.addEventListener('click', async () => {
+      this.invalidatePreview();
+      const version = this.previewVersion;
       try {
         this.refs.markingStatus.textContent = 'Готовим предпросмотр...';
         this.refs.applyBtn.disabled = true;
@@ -126,13 +140,18 @@ export class MarkingScreen {
           marksText: this.refs.gradesInput.value,
           comment: this.refs.commentInput.value
         });
+        if (version !== this.previewVersion) return;
         this.state.marking.preview = preview;
         this.renderPreviewRows(preview.rows || []);
 
         const s = preview.summary || {};
-        this.refs.markingStatus.textContent = `Готово: ${s.ready || 0}, пропуски: ${(s.skipNotInGroup || 0) + (s.skipEmpty || 0)}, ошибки: ${s.errors || 0}`;
+        const lessonDate = new Date(preview.lesson.isoDateTime).toLocaleString('ru-RU', {
+          timeZone: 'Europe/Moscow', dateStyle: 'short', timeStyle: 'short'
+        });
+        this.refs.markingStatus.textContent = `Урок: ${lessonDate}, ${preview.lesson.lessonName || 'без темы'}. Форма: ${preview.controlForm.name}. Готово: ${s.ready || 0}, пропуски: ${(s.skipNotInGroup || 0) + (s.skipEmpty || 0)}, ошибки: ${s.errors || 0}`;
         this.refs.applyBtn.disabled = Number(s.ready || 0) <= 0 || Number(s.errors || 0) > 0;
       } catch (err) {
+        if (version !== this.previewVersion) return;
         this.refs.markingStatus.textContent = `Ошибка: ${err.message}`;
         this.state.marking.preview = null;
         this.refs.applyBtn.disabled = true;

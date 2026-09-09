@@ -58,14 +58,13 @@ function parseGradeLine(v) {
   return n;
 }
 
-function pickPracticalLesson(items) {
+function pickLatestPastLesson(items) {
   const now = Date.now();
   return [...(items || [])]
     .filter((it) => {
       const ts = Date.parse(String(it.iso_date_time || ''));
-      if (!Number.isFinite(ts) || ts > now) return false;
-      const title = `${norm(it.lesson_name)} ${norm(it.topic_name)}`.toLowerCase();
-      return /практич/.test(title);
+      return Number.isInteger(Number(it.id)) && Number(it.id) > 0
+        && Number.isFinite(ts) && ts <= now;
     })
     .sort((a, b) => Date.parse(String(b.iso_date_time || '')) - Date.parse(String(a.iso_date_time || '')))[0] || null;
 }
@@ -318,8 +317,8 @@ export async function buildMarkingPreview({ meshApi, fetchPaged, config, auth, g
     with_availability_info: true
   }, 300, 20);
 
-  const lesson = pickPracticalLesson(scheduleItems);
-  if (!lesson) throw new Error('Не найден прошедший урок с типом "Практическая работа"');
+  const lesson = pickLatestPastLesson(scheduleItems);
+  if (!lesson) throw new Error('Не найден прошедший урок для выбранной группы за выбранный учебный год');
 
   const selectedControlFormId = Number(controlFormId);
   const controlForm = Number.isFinite(selectedControlFormId)
@@ -333,7 +332,7 @@ export async function buildMarkingPreview({ meshApi, fetchPaged, config, auth, g
     || controlForm?.grade_system?.grade_system_id
   );
   if (!Number.isFinite(controlFormGradeSystemId)) {
-    throw new Error('Не удалось определить grade_system_id у формы контроля "Практическая работа"');
+    throw new Error('Не удалось определить grade_system_id у выбранной формы оценивания');
   }
 
   const rows = parsed.map((r) => {
@@ -371,7 +370,7 @@ export async function buildMarkingPreview({ meshApi, fetchPaged, config, auth, g
     lesson: {
       scheduleLessonId: Number(lesson.id),
       isoDateTime: lesson.iso_date_time,
-      lessonName: norm(lesson.lesson_name),
+      lessonName: norm(lesson.lesson_name || lesson.topic_name),
       themeFrameIntegrationId: findThemeIntegrationId(lesson)
     },
     controlForm: {
