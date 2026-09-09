@@ -149,14 +149,14 @@ function schedulePeriodBoundaries(periods) {
 
 function addFiniteNumber(set, value) {
   const n = Number(value);
-  if (Number.isFinite(n)) set.add(n);
+  if (Number.isInteger(n) && n > 0) set.add(n);
 }
 
 function collectClassUnits(g) {
   const units = new Map();
   const add = (id, name = '') => {
     const n = Number(id);
-    if (Number.isFinite(n) && !units.has(n)) units.set(n, norm(name) || `Класс ${n}`);
+    if (Number.isInteger(n) && n > 0 && !units.has(n)) units.set(n, norm(name) || `Класс ${n}`);
   };
   const addFromItem = (item) => {
     if (item && typeof item === 'object') {
@@ -223,9 +223,36 @@ function mapGroup(g) {
     classUnitName: collectClassUnits(g)[0]?.name || norm(g.class_unit_name),
     classUnitIds: collectClassUnitIds(g),
     attestationScheduleId: Number(g.attestation_periods_schedule_id) || null,
-    studentCount: Number(g.student_count || 0),
+    studentCount: getStudentCount(g),
     relatedGroupIds: Array.isArray(g.related_group_ids) ? g.related_group_ids.map((x) => Number(x)).filter(Number.isFinite) : []
   };
+}
+
+function getStudentCount(g) {
+  const raw = g?.student_count;
+  if (raw == null || String(raw).trim() === '') return null;
+  if (typeof raw !== 'number' && typeof raw !== 'string') return null;
+  const count = Number(raw);
+  return Number.isInteger(count) && count >= 0 ? count : null;
+}
+
+function selectAnalyticsGroups(rawGroups, academicYearId) {
+  const candidates = attachRelatedGroupIds(rawGroups).filter((g) => !g.is_metagroup);
+  // A missing count is not evidence that a group has no students.
+  const groups = candidates.filter((g) => getStudentCount(g) !== 0).map(mapGroup);
+  const summary = {
+    academicYearId,
+    received: rawGroups.length,
+    metagroups: rawGroups.length - candidates.length,
+    empty: candidates.filter((g) => getStudentCount(g) === 0).length,
+    unknownStudentCount: candidates.filter((g) => getStudentCount(g) === null).length,
+    selected: groups.length
+  };
+  console.info('[MESHhelper] Analytics groups', JSON.stringify(summary));
+  if (!groups.length) {
+    throw new Error(`Нет доступных групп для аналитики: получено ${summary.received}, метагрупп ${summary.metagroups}, пустых ${summary.empty}. Учебный год ID: ${academicYearId}`);
+  }
+  return groups;
 }
 
 function attachRelatedGroupIds(rawGroups) {
@@ -257,7 +284,7 @@ function extractTeacherClassUnitIds(teacher) {
   candidates.forEach((arr) => {
     (Array.isArray(arr) ? arr : []).forEach((x) => {
       const n = Number(x);
-      if (Number.isFinite(n)) ids.push(n);
+      if (Number.isInteger(n) && n > 0) ids.push(n);
     });
   });
   return [...new Set(ids)];
@@ -299,7 +326,7 @@ async function loadGroupsForAnalytics({ meshApi, fetchPaged, config, auth, saved
   const schoolId = Number(config.schoolId) || Number(teacher?.school_id) || 0;
   const academicYearId = Number(config.academicYearId) || DEFAULT_ACADEMIC_YEAR_ID;
   const envClassUnitIds = Array.isArray(config.analyticsClassUnitIds)
-    ? config.analyticsClassUnitIds.map((x) => Number(x)).filter(Number.isFinite)
+    ? config.analyticsClassUnitIds.map((x) => Number(x)).filter((id) => Number.isInteger(id) && id > 0)
     : [];
 
   const rawGroupIds = Array.isArray(teacher?.assigned_group_ids) && teacher.assigned_group_ids.length
@@ -365,10 +392,7 @@ async function loadGroupsForAnalytics({ meshApi, fetchPaged, config, auth, saved
     if (Number.isFinite(id)) uniq.set(id, g);
   });
 
-  const groups = attachRelatedGroupIds([...uniq.values()])
-    .filter((g) => !g.is_metagroup)
-    .filter((g) => Number(g.student_count || 0) > 0)
-    .map(mapGroup);
+  const groups = selectAnalyticsGroups([...uniq.values()], academicYearId);
 
   return {
     groups,
@@ -681,23 +705,20 @@ export async function loadAnalyticsData({ meshApi, fetchPaged, config, auth, sav
     statusCb(`Уточняем выбранные группы (${groupsRaw.length})...`);
     const detailedGroupsRaw = await parallelMap(groupsRaw, 4, async (g) => {
       try {
-        return await meshApi(`/api/ej/plan/teacher/v1/groups/${g.id}`);
+        return { ...g, ...await meshApi(`/api/ej/plan/teacher/v1/groups/${g.id}`) };
       } catch (err) {
         console.warn('[MESHhelper] Failed to load group details', g.id, err);
         return g;
       }
     });
-    groups = attachRelatedGroupIds(detailedGroupsRaw)
-      .filter((g) => !g.is_metagroup)
-      .filter((g) => Number(g.student_count || 0) > 0)
-      .map(mapGroup);
+    groups = selectAnalyticsGroups(detailedGroupsRaw, academicYearId);
 
     const classOptionMap = new Map();
     groups.forEach((g) => {
       g.classUnitIds.forEach((id) => {
         if (!classOptionMap.has(id)) classOptionMap.set(id, g.classUnitName || `Класс ${id}`);
       });
-      if (Number.isFinite(Number(g.classUnitId))) classOptionMap.set(Number(g.classUnitId), g.classUnitName || `Класс ${g.classUnitId}`);
+      if (Number.isInteger(g.classUnitId) && g.classUnitId > 0) classOptionMap.set(g.classUnitId, g.classUnitName || `Класс ${g.classUnitId}`);
     });
     classOptions = [...classOptionMap.entries()].map(([id, name]) => ({ id, name })).sort((a, b) => a.name.localeCompare(b.name, 'ru'));
     selectedClassUnitIds = [...classOptionMap.keys()].map(Number).filter(Number.isFinite);

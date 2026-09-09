@@ -29,6 +29,25 @@ export function createApiClient({ getAuth, onAuthError }) {
       })
     });
 
+    if (/^\/api\/ej\/(plan|core)\/teacher\/v1\/(groups|teacher_profiles)(\/\d+)?$/.test(path)) {
+      const data = result.data;
+      const sample = Array.isArray(data) ? data[0] : data;
+      const countIds = (value) => value == null || value === '' ? 0 : String(value).split(',').length;
+      console.info('[MESHhelper] API discovery', JSON.stringify({
+        path: path.replace(/\/\d+$/, '/:id'),
+        status: result.status,
+        academicYearId: query?.academic_year_id ?? null,
+        page: query?.page ?? null,
+        groupFilterCount: countIds(query?.group_ids),
+        classFilterCount: countIds(query?.class_unit_ids),
+        responseType: Array.isArray(data) ? 'array' : data === null ? 'null' : typeof data,
+        count: Array.isArray(data) ? data.length : null,
+        fields: sample && typeof sample === 'object' ? Object.keys(sample).sort() : [],
+        assignedGroupCount: Array.isArray(sample?.assigned_group_ids) ? sample.assigned_group_ids.length : null,
+        groupCount: Array.isArray(sample?.group_ids) ? sample.group_ids.length : null
+      }));
+    }
+
     if (!result.ok) {
       const message = typeof result.data === 'string'
         ? result.data
@@ -47,7 +66,10 @@ export function createApiClient({ getAuth, onAuthError }) {
     for (let page = 1; page <= maxPages; page += 1) {
       const query = { ...baseQuery, page, per_page: perPage };
       const data = await meshApi(path, { query });
-      if (!Array.isArray(data) || data.length === 0) break;
+      if (!Array.isArray(data)) {
+        throw new Error(`Неожиданный формат ответа МЭШ: ${path} (ожидался список)`);
+      }
+      if (data.length === 0) break;
       out.push(...data);
       if (data.length < perPage) break;
     }
