@@ -94,7 +94,7 @@ function screenFixture(previewCallback) {
   }]));
   const state = { marking: {} };
   const screen = new MarkingScreen(refs, state, { preview: previewCallback });
-  screen.renderPreviewRows = () => {};
+  screen.renderPreviewRows = (rows) => { refs.renderedRows = rows; };
   screen.bind();
   return { refs, state, screen };
 }
@@ -107,9 +107,13 @@ test('changing form, names, grades or comment invalidates a prepared preview', (
   ]) {
     state.marking.preview = { rows: [] };
     refs.applyBtn.disabled = false;
+    refs.markingStatus.textContent = 'Готово: 3, пропуски: 19, ошибки: 0';
+    refs.renderedRows = [{ status: 'ready' }];
     refs[key].listeners[event]();
     assert.equal(state.marking.preview, null);
     assert.equal(refs.applyBtn.disabled, true);
+    assert.match(refs.markingStatus.textContent, /Предпросмотр устарел/);
+    assert.deepEqual(refs.renderedRows, []);
   }
 });
 
@@ -128,7 +132,7 @@ test('an in-flight preview cannot restore a stale form selection', async () => {
 test('preview displays the selected lesson and form before enabling apply', async () => {
   const preview = {
     lesson: { isoDateTime: '2026-09-09T08:00:00Z', lessonName: 'Algorithms' },
-    controlForm: { name: 'Practical work' }, rows: [], summary: { ready: 1 }
+    controlForm: { name: 'Practical work' }, rows: [], summary: { ready: 3, skipEmpty: 19, errors: 0 }
   };
   const { refs, state } = screenFixture(async () => preview);
   await refs.previewBtn.listeners.click();
@@ -138,4 +142,9 @@ test('preview displays the selected lesson and form before enabling apply', asyn
   assert.match(refs.markingStatus.textContent, /Algorithms/);
   assert.match(refs.markingStatus.textContent, /Practical work/);
   assert.equal(refs.applyBtn.disabled, false);
+  refs.commentInput.listeners.input();
+  assert.equal(refs.applyBtn.disabled, true);
+  await refs.previewBtn.listeners.click();
+  assert.equal(refs.applyBtn.disabled, false);
+  assert.match(refs.markingStatus.textContent, /Готово: 3/);
 });

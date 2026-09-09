@@ -12,6 +12,8 @@ export class MarkingScreen {
     this.previewVersion += 1;
     this.state.marking.preview = null;
     this.refs.applyBtn.disabled = true;
+    this.refs.markingStatus.textContent = 'Предпросмотр устарел: данные изменены.';
+    this.renderPreviewRows([]);
   }
 
   statusBadge(status) {
