@@ -5,7 +5,7 @@ import { MarkingScreen } from '../web/js/components/MarkingScreen.js';
 
 const ago = (hours) => new Date(Date.now() - hours * 3600000).toISOString();
 
-function fixture(scheduleItems) {
+function fixture(scheduleItems, students = [{ id: 40, short_name: 'Test Student' }]) {
   const requests = [];
   const options = {
     config: { academicYearId: 14, schoolId: 1 },
@@ -28,13 +28,69 @@ function fixture(scheduleItems) {
         { id: 20, name: 'Practical work', grade_system: { id: 30 } },
         { id: 21, name: 'Oral answer', grade_system: { id: 31 } }
       ];
-      if (path.endsWith('/student_profiles')) return [{ id: 40, short_name: 'Test Student' }];
+      if (path.endsWith('/student_profiles')) return students;
       if (path.endsWith('/schedule_items')) return scheduleItems;
       throw new Error(`Unexpected request: ${path}`);
     }
   };
   return { options, requests };
 }
+
+test('surname-only input uses structured surname or the MESH display name', async () => {
+  const cases = [
+    { id: 40, last_name: 'Семёнов', first_name: 'Иван' },
+    { id: 40, short_name: 'Семёнов Иван' },
+    { id: 40, user_name: 'Семёнов Иван Иванович' }
+  ];
+  for (const student of cases) {
+    const { options } = fixture([{ id: 101, iso_date_time: ago(24) }], [student]);
+    const preview = await buildMarkingPreview({ ...options, namesText: '  СЕМЕНОВ  ' });
+    assert.equal(preview.rows[0].studentProfileId, 40);
+    assert.equal(preview.rows[0].status, 'ready');
+  }
+});
+
+test('ambiguous surnames require a name and cannot be posted', async () => {
+  const { options } = fixture([{ id: 101, iso_date_time: ago(24) }], [
+    { id: 40, short_name: 'Test Student' },
+    { id: 41, short_name: 'Test Another' }
+  ]);
+  const preview = await buildMarkingPreview({ ...options, namesText: 'Test' });
+  assert.equal(preview.rows[0].status, 'error');
+  assert.match(preview.rows[0].reason, /Укажите имя/);
+  assert.equal(preview.summary.ready, 0);
+  await applyMarkingPreview({
+    auth: options.auth, preview,
+    meshApi() { assert.fail('Ambiguous surname must not be posted'); }
+  });
+  const namedPreview = await buildMarkingPreview(options);
+  assert.equal(namedPreview.rows[0].studentProfileId, 40);
+  assert.equal(namedPreview.rows[0].status, 'ready');
+});
+
+test('surname matching is exact, ignores duplicate profiles, and never uses a first name or synthetic ID', async () => {
+  const { options } = fixture([{ id: 101, iso_date_time: ago(24) }], [
+    { id: 40, short_name: 'Test Student' },
+    { id: 40, short_name: 'Test Student' },
+    { id: 41, first_name: 'Someone' },
+    { id: 42 }
+  ]);
+  for (const name of ['Tes', 'Student', 'Someone', 'ID', 'Unknown']) {
+    const preview = await buildMarkingPreview({ ...options, namesText: name });
+    assert.equal(preview.rows[0].status, 'skip_not_in_group');
+  }
+  const preview = await buildMarkingPreview({ ...options, namesText: 'Test' });
+  assert.equal(preview.rows[0].status, 'ready');
+});
+
+test('hyphenated surnames match and an empty grade stays skipped', async () => {
+  const { options } = fixture([{ id: 101, iso_date_time: ago(24) }], [
+    { id: 40, short_name: 'Test-Surname Student' }
+  ]);
+  const preview = await buildMarkingPreview({ ...options, namesText: 'Test-Surname', marksText: '\n' });
+  assert.equal(preview.rows[0].studentProfileId, 40);
+  assert.equal(preview.rows[0].status, 'skip_empty_grade');
+});
 
 test('preview selects the latest past lesson regardless of its topic or chosen control form', async () => {
   const { options, requests } = fixture([

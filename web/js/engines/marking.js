@@ -260,12 +260,11 @@ export async function buildMarkingPreview({ meshApi, fetchPaged, config, auth, g
   const parsed = names.map((name, idx) => {
     const inputName = norm(name);
     if (!inputName) throw new Error(`Пустая строка ФИО: ${idx + 1}`);
-    const parts = inputName.split(' ');
-    if (parts.length < 2) throw new Error(`Неверный формат ФИО в строке ${idx + 1}`);
     return {
       line: idx + 1,
       inputName,
       inputNameNorm: normalizeName(inputName),
+      surnameOnly: !inputName.includes(' '),
       grade: parseGradeLine(grades[idx])
     };
   });
@@ -287,6 +286,7 @@ export async function buildMarkingPreview({ meshApi, fetchPaged, config, auth, g
   }, 200, 20);
 
   const studentIndex = new Map();
+  const surnameIndex = new Map();
   students.forEach((p) => {
     const id = Number(p.id);
     if (!Number.isFinite(id)) return;
@@ -301,6 +301,11 @@ export async function buildMarkingPreview({ meshApi, fetchPaged, config, auth, g
       if (!studentIndex.has(k)) studentIndex.set(k, []);
       studentIndex.get(k).push({ id, userName });
     });
+    const surname = normalizeName(norm(p.last_name) || norm(p.short_name || p.user_name).split(' ')[0]);
+    if (surname) {
+      if (!surnameIndex.has(surname)) surnameIndex.set(surname, []);
+      surnameIndex.get(surname).push({ id, userName });
+    }
   });
 
   const from = `${new Date().getFullYear() - 1}-09-01`;
@@ -336,12 +341,16 @@ export async function buildMarkingPreview({ meshApi, fetchPaged, config, auth, g
   }
 
   const rows = parsed.map((r) => {
-    const matches = [...new Map((studentIndex.get(r.inputNameNorm) || []).map((x) => [x.id, x])).values()];
+    const index = r.surnameOnly ? surnameIndex : studentIndex;
+    const matches = [...new Map((index.get(r.inputNameNorm) || []).map((x) => [x.id, x])).values()];
     if (!matches.length) {
       return { line: r.line, inputName: r.inputName, grade: r.grade, status: 'skip_not_in_group', reason: 'Ученик не найден в группе' };
     }
     if (matches.length > 1) {
-      return { line: r.line, inputName: r.inputName, grade: r.grade, status: 'error', reason: 'Найдено несколько учеников с таким именем' };
+      return {
+        line: r.line, inputName: r.inputName, grade: r.grade, status: 'error',
+        reason: r.surnameOnly ? 'Несколько учеников с такой фамилией. Укажите имя.' : 'Найдено несколько учеников с таким именем'
+      };
     }
     if (r.grade === null) {
       return {
