@@ -115,6 +115,12 @@
     }
 
     .small-muted { color: var(--muted); font-size: 13px; }
+    .tg-dialog { width: min(560px, calc(100% - 24px)); max-height: 90vh; padding: 24px; }
+    .tg-dialog::backdrop { background: rgba(20, 35, 55, .4); }
+    .tg-contact-list { max-height: 340px; overflow-y: auto; }
+    .tg-contact { display: flex; align-items: center; padding: 10px 4px; border-bottom: 1px solid var(--line); cursor: pointer; }
+    .tg-members { display: flex; flex-wrap: wrap; gap: 6px; max-height: 160px; overflow-y: auto; }
+    .tg-message { white-space: pre-wrap; overflow-wrap: anywhere; max-height: 160px; overflow-y: auto; }
 
     @media (max-width: 991px) {
       .marks-cell { min-width: 240px; }
@@ -127,7 +133,7 @@
     <div class="d-flex justify-content-between align-items-start gap-2 flex-wrap">
       <div>
         <h1 class="h4 fw-bold mb-1">MESH Assistant</h1>
-        <p class="mb-0" style="opacity:.86">Аналитика и массовая проставка отметок через API.</p>
+        <p class="mb-0" style="opacity:.86">Аналитика, отметки и рассылки в Telegram.</p>
       </div>
       <div class="d-flex gap-2">
         <button id="backBtn" class="btn btn-sm btn-light" style="display:none">Назад</button>
@@ -178,13 +184,14 @@
 
     <div class="mt-3 d-flex gap-2 align-items-center">
       <button id="saveAuthBtn" class="btn btn-primary">Сохранить и продолжить</button>
+      <a href="#mode" class="btn btn-outline-secondary">К выбору раздела</a>
       <span id="authStatus" class="small-muted"></span>
     </div>
   </section>
 
   <section id="modeScreen" class="screen panel p-3 p-md-4">
     <h2 class="h5 fw-bold mb-2">Выберите режим</h2>
-    <p class="small-muted mb-3">Режимы загружают данные по API с текущим токеном.</p>
+    <p class="small-muted mb-3">Для работы с журналом нужен вход в МЭШ. Рассылки подключаются к Telegram отдельно.</p>
     <div class="row g-3">
       <div class="col-md-3">
         <button id="openAnalyticsModeBtn" class="mode-card w-100">
@@ -210,8 +217,16 @@
           <div class="small-muted">Автозаполнение анкеты по доступным группам.</div>
         </button>
       </div>
+      <div class="col-md-3">
+        <button id="openMailingsModeBtn" class="mode-card w-100">
+          <div class="h5 mb-1 fw-bold">Рассылки</div>
+          <div class="small-muted">Группы контактов и личные сообщения через ваш Telegram.</div>
+        </button>
+      </div>
     </div>
   </section>
+
+  <section id="mailingsScreen" class="screen"></section>
 
   <section id="analyticsScreen" class="screen">
     <div id="analyticsLoader" class="panel spinner-wrap">

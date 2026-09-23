@@ -10,6 +10,33 @@ const MESH_BASE = 'https://school.mos.ru';
 const DEFAULT_ACADEMIC_YEAR_ID = 14;
 const DEFAULT_EXPORT_START_AT = '2026-09-01';
 const DEFAULT_EXPORT_STOP_AT = '2027-08-31';
+let telegramService;
+
+async function telegramRequest(req, res) {
+  // JSON + bearer token + same-origin browser requests. Never accept tokens in URLs.
+  res.setHeader('Cache-Control', 'no-store');
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  if (req.headers['sec-fetch-site'] === 'cross-site') return json(res, 403, { error: 'Cross-site request rejected' });
+  const action = req.url.slice('/api/telegram/'.length);
+  if (!['config', 'login', 'code', 'password', 'state', 'contacts', 'send', 'stop', 'resume', 'logout', 'acknowledge-restriction'].includes(action)) {
+    return json(res, 404, { error: 'Unknown action' });
+  }
+  if (req.method !== 'POST' || !String(req.headers['content-type']).startsWith('application/json')) {
+    return json(res, 405, { error: 'Use POST with application/json' });
+  }
+  const { createTelegramService, publicError } = require('./server/telegram-service.cjs');
+  telegramService ||= createTelegramService();
+  try {
+    const body = await readBody(req);
+    const bearer = String(req.headers.authorization || '').replace(/^Bearer /, '');
+    const result = await telegramService.handle(action, body, bearer, req.socket.remoteAddress);
+    return json(res, 200, result);
+  } catch (err) {
+    const { status, ...body } = publicError(err);
+    if (body.retryAfter) res.setHeader('Retry-After', String(body.retryAfter));
+    return json(res, status, body);
+  }
+}
 
 const TRIMESTERS = [
   {
@@ -180,6 +207,7 @@ function serveStatic(req, res) {
 
 const server = http.createServer(async (req, res) => {
   try {
+    if (req.url.startsWith('/api/telegram/')) return await telegramRequest(req, res);
     if (req.method === 'GET' && req.url === '/api/config') {
       return json(res, 200, {
         appName: 'MESH Assistant',

@@ -6,3 +6,5 @@ output
 npm-debug.log*
 .DS_Store
 .idea
+.telegram-data
+web-dist

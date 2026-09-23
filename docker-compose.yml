@@ -8,5 +8,9 @@ services:
       - "127.0.0.1:8787:8787"
     env_file:
       - .env
+    volumes:
+      - telegram-data:/app/.telegram-data
     restart: unless-stopped
 
+volumes:
+  telegram-data:

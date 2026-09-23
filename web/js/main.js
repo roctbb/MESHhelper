@@ -17,6 +17,7 @@ import { AnalyticsScreen } from './components/AnalyticsScreen.js';
 import { MarkingScreen } from './components/MarkingScreen.js';
 import { FinalMarksScreen } from './components/FinalMarksScreen.js';
 import { SoftSkillsScreen } from './components/SoftSkillsScreen.js';
+import { MailingsScreen } from './components/MailingsScreen.js';
 import { loadAnalyticsData } from './engines/analytics.js';
 import { loadGroupsForMarking, loadControlFormsForMarking, buildMarkingPreview, applyMarkingPreview, buildFinalMarksPreview, applyFinalMarksPreview } from './engines/marking.js';
 import { buildSoftSkillsPlan, applySoftSkillsPlan } from './engines/softSkills.js';
@@ -76,6 +77,7 @@ const refs = {
   markingScreen: document.getElementById('markingScreen'),
   finalMarksScreen: document.getElementById('finalMarksScreen'),
   softSkillsScreen: document.getElementById('softSkillsScreen'),
+  mailingsScreen: document.getElementById('mailingsScreen'),
   backBtn: document.getElementById('backBtn'),
   logoutBtn: document.getElementById('logoutBtn'),
 
@@ -90,6 +92,7 @@ const refs = {
   openMarkingModeBtn: document.getElementById('openMarkingModeBtn'),
   openFinalMarksModeBtn: document.getElementById('openFinalMarksModeBtn'),
   openSoftSkillsModeBtn: document.getElementById('openSoftSkillsModeBtn'),
+  openMailingsModeBtn: document.getElementById('openMailingsModeBtn'),
 
   analyticsLoader: document.getElementById('analyticsLoader'),
   analyticsLoaderText: document.getElementById('analyticsLoaderText'),
@@ -162,12 +165,14 @@ function setScreen(name) {
     analytics: refs.analyticsScreen,
     marking: refs.markingScreen,
     finalMarks: refs.finalMarksScreen,
-    softSkills: refs.softSkillsScreen
+    softSkills: refs.softSkillsScreen,
+    mailings: refs.mailingsScreen
   };
   Object.values(map).forEach((el) => el.classList.remove('active'));
   if (map[name]) map[name].classList.add('active');
 
-  refs.logoutBtn.style.display = (name === 'auth') ? 'none' : '';
+  if (name !== 'mailings') mailingsScreen.hide();
+  refs.logoutBtn.style.display = (!state.auth || name === 'mailings') ? 'none' : '';
   refs.backBtn.style.display = (name === 'mode' || name === 'auth') ? 'none' : '';
 }
 
@@ -223,8 +228,11 @@ const modeScreen = new ModeScreen(refs, {
   onOpenAnalytics: () => { location.hash = '#analytics'; },
   onOpenMarking: () => { location.hash = '#marking'; },
   onOpenFinalMarks: () => { location.hash = '#final-marks'; },
-  onOpenSoftSkills: () => { location.hash = '#soft-skills'; }
+  onOpenSoftSkills: () => { location.hash = '#soft-skills'; },
+  onOpenMailings: () => { location.hash = '#mailings'; }
 });
+
+const mailingsScreen = new MailingsScreen(refs.mailingsScreen);
 
 const analyticsScreen = new AnalyticsScreen(refs, state, {
   saveHiddenStudentsSet
@@ -481,19 +489,23 @@ async function openFinalMarks() {
 }
 
 async function renderRoute() {
+  const { head, param } = parseRoute();
+  if (head === 'mailings') {
+    setScreen('mailings');
+    await mailingsScreen.show();
+    return;
+  }
+  if (head === 'mode' || !head) {
+    setScreen('mode');
+    return;
+  }
   if (!state.auth) {
     setScreen('auth');
     return;
   }
 
-  const { head, param } = parseRoute();
   if (head === 'auth') {
     location.hash = '#mode';
-    return;
-  }
-
-  if (head === 'mode' || !head) {
-    setScreen('mode');
     return;
   }
 
@@ -534,7 +546,7 @@ async function init() {
     state.auth = auth;
   } else {
     authScreen.fill({ roleId: '9', hostId: '9' });
-    location.hash = '#auth';
+    if (!location.hash) location.hash = '#mode';
   }
 
   await renderRoute();
@@ -542,7 +554,7 @@ async function init() {
 
 refs.backBtn.addEventListener('click', () => {
   const { head } = parseRoute();
-  if (head === 'analytics' || head === 'marking' || head === 'final-marks' || head === 'soft-skills') location.hash = '#mode';
+  if (head === 'analytics' || head === 'marking' || head === 'final-marks' || head === 'soft-skills' || head === 'mailings' || head === 'auth') location.hash = '#mode';
 });
 
 refs.logoutBtn.addEventListener('click', () => {
