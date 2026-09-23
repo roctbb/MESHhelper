@@ -2,6 +2,7 @@ const { TelegramClient, Api } = require('teleproto');
 const { StringSession } = require('teleproto/sessions');
 const { computeCheck } = require('teleproto/Password');
 const bigInt = require('big-integer');
+const { telegramWebSocket } = require('./telegram-websocket.cjs');
 
 function telegramProxy(env) {
   const value = String(env.TELEGRAM_PROXY_URL || '').trim();
@@ -20,10 +21,22 @@ function telegramProxy(env) {
   }
 }
 
+function telegramTransport(env) {
+  const proxy = telegramProxy(env);
+  const transport = String(env.TELEGRAM_TRANSPORT || 'auto').trim().toLowerCase();
+  if (!['auto', 'tcp', 'wss'].includes(transport)) {
+    throw Object.assign(new Error('TELEGRAM_TRANSPORT: допустимы auto, tcp или wss.'), { status: 503 });
+  }
+  if (transport === 'wss' || (transport === 'auto' && proxy)) {
+    return { networkSocket: telegramWebSocket(String(env.TELEGRAM_PROXY_URL || '').trim()) };
+  }
+  return { proxy };
+}
+
 function createTelegramAdapter(session, apiId, apiHash, env = process.env) {
   const client = new TelegramClient(new StringSession(session), apiId, apiHash, {
     connectionRetries: 2, reconnectRetries: 2, timeout: 8, requestRetries: 3, floodSleepThreshold: 0,
-    proxy: telegramProxy(env),
+    ...telegramTransport(env),
     deviceModel: 'MESH Assistant', appVersion: '1.0.0',
     // Suppress SDK logs, which may include request details.
     baseLogger: new (require('teleproto/extensions/Logger').Logger)('none')
@@ -58,4 +71,4 @@ function createTelegramAdapter(session, apiId, apiHash, env = process.env) {
   };
 }
 
-module.exports = { createTelegramAdapter, telegramProxy };
+module.exports = { createTelegramAdapter, telegramProxy, telegramTransport };

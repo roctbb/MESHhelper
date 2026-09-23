@@ -17,7 +17,9 @@
   "dependencies": {
     "big-integer": "1.6.52",
     "dotenv": "^16.6.1",
-    "teleproto": "1.229.0"
+    "socks-proxy-agent": "10.1.0",
+    "teleproto": "1.229.0",
+    "ws": "8.21.3"
   },
   "devDependencies": {
     "vite": "^5.4.10"
