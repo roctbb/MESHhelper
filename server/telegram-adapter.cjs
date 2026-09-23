@@ -3,9 +3,27 @@ const { StringSession } = require('teleproto/sessions');
 const { computeCheck } = require('teleproto/Password');
 const bigInt = require('big-integer');
 
-function createTelegramAdapter(session, apiId, apiHash) {
+function telegramProxy(env) {
+  const value = String(env.TELEGRAM_PROXY_URL || '').trim();
+  if (!value) return undefined;
+  try {
+    const url = new URL(value);
+    const port = Number(url.port);
+    if (!['socks5:', 'socks5h:'].includes(url.protocol) || !url.hostname || !url.port || !Number.isInteger(port) || port < 1 || port > 65535
+      || (url.pathname && url.pathname !== '/') || url.search || url.hash) throw new Error('Invalid proxy');
+    return { ip: url.hostname.replace(/^\[|\]$/g, ''), port, socksType: 5, timeout: 8,
+      username: url.username ? decodeURIComponent(url.username) : undefined,
+      password: url.password ? decodeURIComponent(url.password) : undefined };
+  } catch (_) {
+    // Never echo the URL: it can contain credentials.
+    throw Object.assign(new Error('Проверьте TELEGRAM_PROXY_URL: нужен socks5:// или socks5h://логин:пароль@хост:порт (логин и пароль необязательны).'), { status: 503 });
+  }
+}
+
+function createTelegramAdapter(session, apiId, apiHash, env = process.env) {
   const client = new TelegramClient(new StringSession(session), apiId, apiHash, {
-    connectionRetries: 3, requestRetries: 3, floodSleepThreshold: 0,
+    connectionRetries: 2, reconnectRetries: 2, timeout: 8, requestRetries: 3, floodSleepThreshold: 0,
+    proxy: telegramProxy(env),
     deviceModel: 'MESH Assistant', appVersion: '1.0.0',
     // Suppress SDK logs, which may include request details.
     baseLogger: new (require('teleproto/extensions/Logger').Logger)('none')
@@ -40,4 +58,4 @@ function createTelegramAdapter(session, apiId, apiHash) {
   };
 }
 
-module.exports = { createTelegramAdapter };
+module.exports = { createTelegramAdapter, telegramProxy };

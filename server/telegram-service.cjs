@@ -1,6 +1,7 @@
 const crypto = require('node:crypto');
 const path = require('node:path');
 const { TelegramStore } = require('./telegram-store.cjs');
+const { withTelegramDeadlines } = require('./telegram-deadline.cjs');
 
 const hashToken = (value) => crypto.createHash('sha256').update(value).digest('hex');
 const token = () => crypto.randomBytes(32).toString('hex');
@@ -13,13 +14,14 @@ const safeCode = (err) => errorCode(err).match(/^[A-Z][A-Z_0-9]+$/)?.[0] || 'CON
 const active = (job) => ['running', 'waiting'].includes(job.status);
 
 function createTelegramService({ env = process.env, store: providedStore, adapterFactory,
-  now = Date.now, schedule = setTimeout, cancelSchedule = clearTimeout } = {}) {
+  now = Date.now, schedule = setTimeout, cancelSchedule = clearTimeout, operationTimeoutMs = 20000 } = {}) {
   const apiId = Number(env.TELEGRAM_API_ID);
   const apiHash = env.TELEGRAM_API_HASH || '';
   const configured = Boolean(Number.isInteger(apiId) && apiId > 0 && /^[a-f0-9]{32}$/i.test(apiHash));
   const intervalMs = Math.max(5000, Number(env.TELEGRAM_SEND_INTERVAL_MS) || 30000);
   let store = providedStore;
   const clients = new Map();
+  const connecting = new Map();
   const pending = new Map();
   const locks = new Set();
   const timers = new Map();
@@ -42,7 +44,7 @@ function createTelegramService({ env = process.env, store: providedStore, adapte
   function save() { store.save(); }
   function newClient(session = '') {
     const factory = adapterFactory || require('./telegram-adapter.cjs').createTelegramAdapter;
-    return factory(session, apiId, apiHash);
+    return withTelegramDeadlines(factory(session, apiId, apiHash, env), { timeoutMs: operationTimeoutMs });
   }
   function rateLimit(key, maximum, period) {
     if (limits.size > 10000) for (const [k, value] of limits) if (value.until <= now()) limits.delete(k);
@@ -59,10 +61,17 @@ function createTelegramService({ env = process.env, store: providedStore, adapte
     return { key, session, account: database().accounts[session.user.id] };
   }
   async function getClient(key, session) {
+    if (connecting.has(key)) return connecting.get(key);
+    if (clients.get(key)?.unavailable) clients.delete(key);
     if (!clients.has(key)) {
       const client = newClient(session.secret);
-      clients.set(key, client);
-      try { await client.connect(); } catch (err) { clients.delete(key); await client.disconnect().catch(() => {}); throw err; }
+      const connection = (async () => {
+        try { await client.connect(); clients.set(key, client); return client; }
+        catch (err) { await client.disconnect(); throw err; }
+        finally { connecting.delete(key); }
+      })();
+      connecting.set(key, connection);
+      return connection;
     }
     return clients.get(key);
   }
@@ -190,6 +199,7 @@ function createTelegramService({ env = process.env, store: providedStore, adapte
         return { token: accessToken, ...publicState(session, data.accounts[session.user.id]) };
       } catch (err) {
         if (/SESSION_PASSWORD_NEEDED/.test(errorCode(err))) { login.needsPassword = true; return { needsPassword: true }; }
+        if (login.client.unavailable) pending.delete(bearer);
         const wait = secondsToWait(err);
         if (wait) login.waitUntil = now() + wait * 1000;
         throw err;
@@ -304,11 +314,12 @@ function createTelegramService({ env = process.env, store: providedStore, adapte
 }
 
 function publicError(err) {
-  if (err.status) return { status: err.status, error: err.message };
+  if (err.status) return { status: err.status, error: err.message, ...(err.restartLogin ? { restartLogin: true } : {}) };
   const wait = secondsToWait(err);
   if (wait) return { status: 429, error: `Telegram требует подождать ${wait} сек.`, retryAfter: wait };
   const code = safeCode(err);
   const messages = { PHONE_CODE_INVALID: 'Неверный код.', PHONE_CODE_EXPIRED: 'Код истёк. Начните вход заново.',
+    CONNECTION_ERROR: 'Ошибка соединения сервера с Telegram. Проверьте исходящий доступ сервера или настройки SOCKS5-прокси.',
     PASSWORD_HASH_INVALID: 'Неверный пароль.', PHONE_NUMBER_INVALID: 'Неверный номер телефона.',
     PHONE_NUMBER_BANNED: 'Номер заблокирован Telegram.', ACCOUNT_REQUIRED: 'Нужен существующий аккаунт Telegram.',
     API_ID_INVALID: 'Проверьте TELEGRAM_API_ID и TELEGRAM_API_HASH на сервере.' };

@@ -32,6 +32,7 @@ async function telegramRequest(req, res) {
     const result = await telegramService.handle(action, body, bearer, req.socket.remoteAddress);
     return json(res, 200, result);
   } catch (err) {
+    if (err.stage) console.warn('[Telegram] connection failure', { stage: err.stage, code: err.errorMessage });
     const { status, ...body } = publicError(err);
     if (body.retryAfter) res.setHeader('Retry-After', String(body.retryAfter));
     return json(res, status, body);

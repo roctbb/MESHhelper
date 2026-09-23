@@ -1,5 +1,6 @@
 import { escapeHtml as esc } from '../utils.js';
 import { TELEGRAM_TOKEN_KEY, loadTelegramGroups, saveTelegramGroups } from '../telegram-storage.js';
+import { telegramRequest } from '../telegram-api.js';
 
 const labels = { pending: 'В очереди', sending: 'Отправляется', sent: 'Отправлено', failed: 'Ошибка',
   unknown: 'Результат неизвестен — проверьте диалог', cancelled: 'Остановлено', running: 'Отправка',
@@ -122,14 +123,12 @@ export class MailingsScreen {
   }
 
   async api(action, body = {}, auth = this.token) {
-    const response = await fetch(`/api/telegram/${action}`, { method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...(auth ? { Authorization: `Bearer ${auth}` } : {}) }, body: JSON.stringify(body) });
-    const result = await response.json();
-    if (!response.ok) {
-      if (response.status === 401 && auth === this.token) this.clearSession();
-      throw new Error(result.error || 'Ошибка соединения с сервером.');
+    try { return await telegramRequest(action, body, auth); }
+    catch (err) {
+      if (err.status === 401 && auth === this.token) this.clearSession();
+      if (err.restartLogin && ['login', 'code', 'password'].includes(action)) this.resetLogin();
+      throw err;
     }
-    return result;
   }
   notice(text, error = false) {
     this.refs.status.hidden = !text; this.refs.status.className = `mt-3 alert ${error ? 'alert-danger' : 'alert-info'}`;
@@ -179,6 +178,7 @@ export class MailingsScreen {
     const r = this.refs;
     if (!window.isSecureContext) throw new Error('Вход доступен только через HTTPS или localhost.');
     if (!this.loginToken) {
+      this.notice('Соединяемся с Telegram и запрашиваем код. Это может занять до 40 секунд…');
       const result = await this.api('login', { phone: r.phone.value }, '');
       this.loginToken = result.loginToken; r.phone.disabled = true; r.codeWrap.hidden = false; r.restart.hidden = false;
       r.loginSubmit.textContent = 'Подтвердить код'; r.code.focus();
@@ -251,6 +251,7 @@ export class MailingsScreen {
     this.refs.send.textContent = this.busy ? 'Подождите…' : `Отправить ${count} получателям`;
     this.refs.send.disabled = Boolean(this.busy || active || this.data?.restricted || !count || !this.refs.message.value.trim() || !this.refs.expected.checked || this.data?.nextSendAt > Date.now());
     this.refs.loginSubmit.disabled = Boolean(this.busy || !this.configured);
+    this.refs.loginSubmit.textContent = this.busy ? 'Подождите…' : this.needsPassword ? 'Войти' : this.loginToken ? 'Подтвердить код' : 'Получить код';
     this.refs.restart.disabled = Boolean(this.busy);
     for (const name of ['newGroup', 'editGroup', 'deleteGroup', 'logout', 'acknowledge']) this.refs[name].disabled = Boolean(this.busy);
     this.refs.message.disabled = Boolean(this.busy);
