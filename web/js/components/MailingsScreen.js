@@ -241,7 +241,10 @@ export class MailingsScreen {
     if (group) {
       this.refs.groupTitle.textContent = group.name;
       this.refs.members.innerHTML = group.members.map((m) => `<span class="badge text-bg-light border fw-normal">${esc(m.name)}</span>`).join('') || '<span class="small-muted">В группе пока нет контактов.</span>';
-      this.refs.pace.textContent = `Сообщения отправляются по одному с интервалом не менее ${Math.round((this.data?.intervalMs || 30000) / 1000)} сек. Это снижает скорость отправки, но не гарантирует защиту от блокировки.`;
+      const baseSeconds = (this.data?.intervalMs || 5000) / 1000;
+      const jitterSeconds = (this.data?.jitterMs ?? 5000) / 1000;
+      const pace = jitterSeconds ? `со случайным интервалом ${baseSeconds}–${baseSeconds + jitterSeconds} сек.` : `с интервалом не менее ${baseSeconds} сек.`;
+      this.refs.pace.textContent = `Сообщения отправляются по одному ${pace} Это снижает скорость отправки, но не гарантирует защиту от блокировки.`;
     }
     this.renderControls();
   }

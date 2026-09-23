@@ -23,8 +23,10 @@ function fixture(t, options = {}) {
     send: async (recipient, message) => { calls.push({ ...recipient, message }); if (options.sendError) throw options.sendError; },
     logout: async () => {}, ...options.adapter };
   const store = options.store || { data: { sessions: {}, accounts: {} }, save() {} };
-  const service = createTelegramService({ env: { TELEGRAM_API_ID: '123', TELEGRAM_API_HASH: 'a'.repeat(32) },
+  const service = createTelegramService({ env: { TELEGRAM_API_ID: '123', TELEGRAM_API_HASH: 'a'.repeat(32),
+    TELEGRAM_SEND_INTERVAL_MS: '30000', TELEGRAM_SEND_JITTER_MS: '0', ...options.env },
     store, adapterFactory: () => adapter, now: () => clock,
+    randomInt: options.randomInt,
     schedule: (fn, delay) => { const id = ++sequence; tasks.set(id, { fn, at: clock + delay }); return id; },
     cancelSchedule: (id) => tasks.delete(id) });
   t.after(() => service.close());
@@ -101,6 +103,24 @@ test('idempotent submission and pacing prevent duplicate or concurrent broadcast
   assert.notEqual(f.calls[0].randomId, f.calls[1].randomId);
   await f.service.handle('send', payload, token);
   assert.equal(f.calls.length, 2);
+});
+
+test('default pacing draws a fresh 0–5 second addition and persists the scheduled time', async (t) => {
+  const samples = [0, 5000];
+  const f = fixture(t, { env: { TELEGRAM_SEND_INTERVAL_MS: undefined, TELEGRAM_SEND_JITTER_MS: undefined },
+    randomInt: (exclusiveMaximum) => { assert.equal(exclusiveMaximum, 5001); return samples.shift(); } });
+  assert.deepEqual(await f.service.handle('config'), { configured: true, intervalMs: 5000, jitterMs: 5000 });
+  const token = await f.login();
+  await f.service.handle('send', f.payload(), token); await f.tick();
+  assert.equal(f.store.data.accounts['1'].nextSendAt, 1005000);
+  assert.equal([...f.tasks.values()][0].at, 1005000);
+  f.advance(4999); assert.equal(f.calls.length, 1);
+  assert.ok([...f.tasks.values()].every((task) => task.at > 1004999));
+  f.advance(1); await f.tick();
+  const state = await f.service.handle('state', {}, token);
+  assert.equal(state.nextSendAt, 1015000);
+  assert.equal(state.jitterMs, 5000);
+  assert.equal(f.calls.length, 2); assert.equal(samples.length, 0);
 });
 
 test('FLOOD_WAIT pauses without retrying, persists cooldown, resumes only after the deadline', async (t) => {

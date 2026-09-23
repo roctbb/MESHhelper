@@ -14,11 +14,14 @@ const safeCode = (err) => errorCode(err).match(/^[A-Z][A-Z_0-9]+$/)?.[0] || 'CON
 const active = (job) => ['running', 'waiting'].includes(job.status);
 
 function createTelegramService({ env = process.env, store: providedStore, adapterFactory,
-  now = Date.now, schedule = setTimeout, cancelSchedule = clearTimeout, operationTimeoutMs = 20000 } = {}) {
+  now = Date.now, schedule = setTimeout, cancelSchedule = clearTimeout, operationTimeoutMs = 20000,
+  randomInt = crypto.randomInt } = {}) {
   const apiId = Number(env.TELEGRAM_API_ID);
   const apiHash = env.TELEGRAM_API_HASH || '';
   const configured = Boolean(Number.isInteger(apiId) && apiId > 0 && /^[a-f0-9]{32}$/i.test(apiHash));
-  const intervalMs = Math.max(5000, Number(env.TELEGRAM_SEND_INTERVAL_MS) || 30000);
+  const intervalMs = Math.max(5000, Number(env.TELEGRAM_SEND_INTERVAL_MS) || 5000);
+  const configuredJitter = Number(env.TELEGRAM_SEND_JITTER_MS ?? 5000);
+  const jitterMs = Number.isFinite(configuredJitter) ? Math.min(2147483647, Math.max(0, Math.floor(configuredJitter))) : 5000;
   let store = providedStore;
   const clients = new Map();
   const connecting = new Map();
@@ -76,7 +79,7 @@ function createTelegramService({ env = process.env, store: providedStore, adapte
     return clients.get(key);
   }
   function publicState(session, account) {
-    return { user: session.user, intervalMs,
+    return { user: session.user, intervalMs, jitterMs,
       nextSendAt: account.nextSendAt || 0, restricted: Boolean(account.restricted),
       jobs: account.jobs.map((job) => ({ ...job,
         recipients: job.recipients.map(({ accessHash, randomId, ...recipient }) => recipient) })) };
@@ -111,7 +114,7 @@ function createTelegramService({ env = process.env, store: providedStore, adapte
       const client = await getClient(key, session);
       if (!active(job) || closed) return;
       recipient.status = 'sending';
-      account.nextSendAt = now() + intervalMs;
+      account.nextSendAt = now() + intervalMs + (jitterMs ? randomInt(jitterMs + 1) : 0);
       save(); // Persist intent before the external side effect.
       await client.send(recipient, job.message);
       recipient.status = 'sent'; recipient.sentAt = now();
@@ -151,7 +154,7 @@ function createTelegramService({ env = process.env, store: providedStore, adapte
   }
 
   async function handle(action, body = {}, bearer = '', ip = 'local') {
-    if (action === 'config') return { configured, intervalMs };
+    if (action === 'config') return { configured, intervalMs, jitterMs };
     if (!configured) fail('На сервере нужно указать TELEGRAM_API_ID и TELEGRAM_API_HASH в .env.', 503);
     if (action === 'login') {
       const phone = String(body.phone || '').replace(/[ ()-]/g, '');
