@@ -6,6 +6,14 @@ export function normalizeName(v) {
   return norm(v).toLowerCase().replace(/ё/g, 'е');
 }
 
+export function toMoscowDate(value = new Date()) {
+  const parts = new Intl.DateTimeFormat('en', {
+    timeZone: 'Europe/Moscow', year: 'numeric', month: '2-digit', day: '2-digit'
+  }).formatToParts(new Date(value));
+  const get = (type) => parts.find((part) => part.type === type).value;
+  return `${get('year')}-${get('month')}-${get('day')}`;
+}
+
 export function escapeHtml(v) {
   return String(v ?? '')
     .replace(/&/g, '&amp;')

@@ -19,7 +19,7 @@ import { FinalMarksScreen } from './components/FinalMarksScreen.js';
 import { SoftSkillsScreen } from './components/SoftSkillsScreen.js';
 import { MailingsScreen } from './components/MailingsScreen.js';
 import { loadAnalyticsData } from './engines/analytics.js';
-import { loadGroupsForMarking, loadControlFormsForMarking, buildMarkingPreview, applyMarkingPreview, buildFinalMarksPreview, applyFinalMarksPreview } from './engines/marking.js';
+import { loadGroupsForMarking, loadControlFormsForMarking, loadLessonDatesForMarking, buildMarkingPreview, applyMarkingPreview, buildFinalMarksPreview, applyFinalMarksPreview } from './engines/marking.js';
 import { buildSoftSkillsPlan, applySoftSkillsPlan } from './engines/softSkills.js';
 
 const state = {
@@ -130,6 +130,7 @@ const refs = {
   markingContent: document.getElementById('markingContent'),
   groupSelect: document.getElementById('groupSelect'),
   controlFormSelect: document.getElementById('controlFormSelect'),
+  markingLessonDate: document.getElementById('markingLessonDate'),
   commentInput: document.getElementById('commentInput'),
   namesInput: document.getElementById('namesInput'),
   gradesInput: document.getElementById('gradesInput'),
@@ -301,9 +302,8 @@ const markingScreen = new MarkingScreen(refs, state, {
       auth: state.auth,
       groupId
     });
-    state.marking.controlForms = data.controlForms;
-    state.marking.controlFormsGroupId = String(groupId || '');
-    return data;
+    const lessonDates = await loadLessonDatesForMarking({ fetchPaged: api.fetchPaged, config: state.config, groupId });
+    return { ...data, lessonDates };
   },
   preview: async (payload) => {
     return buildMarkingPreview({
@@ -313,6 +313,7 @@ const markingScreen = new MarkingScreen(refs, state, {
       auth: state.auth,
       groupId: payload.groupId,
       controlFormId: payload.controlFormId,
+      lessonDate: payload.lessonDate,
       namesText: payload.namesText,
       marksText: payload.marksText,
       comment: payload.comment

@@ -6,6 +6,7 @@ export class MarkingScreen {
     this.state = state;
     this.callbacks = callbacks;
     this.previewVersion = 0;
+    this.groupLoadVersion = 0;
   }
 
   invalidatePreview() {
@@ -62,6 +63,7 @@ export class MarkingScreen {
   }
 
   async loadControlFormsForSelectedGroup() {
+    const version = ++this.groupLoadVersion;
     const groupId = this.refs.groupSelect.value;
     const comment = this.refs.commentInput.value;
     const selectedOption = this.refs.controlFormSelect.selectedOptions?.[0] || null;
@@ -69,15 +71,39 @@ export class MarkingScreen {
     this.state.marking.selectedControlFormLabel = String(selectedOption?.textContent || this.state.marking.selectedControlFormLabel || '');
     this.state.marking.comment = comment;
     this.invalidatePreview();
+    this.refs.previewBtn.disabled = true;
+    this.refs.markingLessonDate.disabled = true;
+    this.refs.markingLessonDate.innerHTML = '<option value="">Загрузка...</option>';
     this.refs.controlFormSelect.innerHTML = '<option value="">Загрузка...</option>';
     if (!groupId) {
       this.state.marking.controlForms = [];
       this.renderControlForms();
+      this.refs.markingLessonDate.innerHTML = '<option value="">Нет доступных дат</option>';
       this.refs.commentInput.value = comment;
       return;
     }
-    this.refs.markingStatus.textContent = 'Загружаем формы оценивания...';
-    await this.callbacks.loadControlForms(groupId);
+    this.refs.markingStatus.textContent = 'Загружаем формы оценивания и даты уроков...';
+    let data;
+    try {
+      data = await this.callbacks.loadControlForms(groupId);
+    } catch (err) {
+      if (version !== this.groupLoadVersion) return;
+      this.refs.markingLessonDate.innerHTML = '<option value="">Не удалось загрузить даты</option>';
+      throw err;
+    }
+    if (version !== this.groupLoadVersion) return;
+    this.state.marking.controlForms = data.controlForms;
+    this.state.marking.controlFormsGroupId = String(groupId);
+    this.refs.markingLessonDate.innerHTML = '<option value="">Последний доступный</option>';
+    data.lessonDates.forEach((date) => {
+      const option = document.createElement('option');
+      option.value = date;
+      option.textContent = date.split('-').reverse().join('.');
+      this.refs.markingLessonDate.appendChild(option);
+    });
+    this.refs.markingLessonDate.value = '';
+    this.refs.markingLessonDate.disabled = false;
+    this.refs.previewBtn.disabled = false;
     this.renderControlForms();
     this.refs.commentInput.value = comment;
     this.refs.markingStatus.textContent = '';
@@ -104,6 +130,8 @@ export class MarkingScreen {
   }
 
   bind() {
+    this.refs.markingLessonDate.addEventListener('change', () => this.invalidatePreview());
+
     this.refs.groupSelect.addEventListener('change', () => {
       this.loadControlFormsForSelectedGroup().catch((err) => {
         this.state.marking.controlForms = [];
@@ -135,9 +163,11 @@ export class MarkingScreen {
       try {
         this.refs.markingStatus.textContent = 'Готовим предпросмотр...';
         this.refs.applyBtn.disabled = true;
+        const lessonDate = this.refs.markingLessonDate.value;
         const preview = await this.callbacks.preview({
           groupId: this.refs.groupSelect.value,
           controlFormId: this.refs.controlFormSelect.value,
+          lessonDate,
           namesText: this.refs.namesInput.value,
           marksText: this.refs.gradesInput.value,
           comment: this.refs.commentInput.value
@@ -147,10 +177,10 @@ export class MarkingScreen {
         this.renderPreviewRows(preview.rows || []);
 
         const s = preview.summary || {};
-        const lessonDate = new Date(preview.lesson.isoDateTime).toLocaleString('ru-RU', {
+        const lessonDateLabel = new Date(preview.lesson.isoDateTime).toLocaleString('ru-RU', {
           timeZone: 'Europe/Moscow', dateStyle: 'short', timeStyle: 'short'
         });
-        this.refs.markingStatus.textContent = `Урок: ${lessonDate}, ${preview.lesson.lessonName || 'без темы'}. Форма: ${preview.controlForm.name}. Готово: ${s.ready || 0}, пропуски: ${(s.skipNotInGroup || 0) + (s.skipEmpty || 0)}, ошибки: ${s.errors || 0}`;
+        this.refs.markingStatus.textContent = `Урок: ${lessonDateLabel}, ${preview.lesson.lessonName || 'без темы'}. Форма: ${preview.controlForm.name}. Готово: ${s.ready || 0}, пропуски: ${(s.skipNotInGroup || 0) + (s.skipEmpty || 0)}, ошибки: ${s.errors || 0}`;
         this.refs.applyBtn.disabled = Number(s.ready || 0) <= 0 || Number(s.errors || 0) > 0;
       } catch (err) {
         if (version !== this.previewVersion) return;

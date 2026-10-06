@@ -1,4 +1,4 @@
-import { norm, normalizeName, parallelMap } from '../utils.js';
+import { norm, normalizeName, parallelMap, toMoscowDate } from '../utils.js';
 import { buildSubjectRows } from './analytics.js';
 
 const DEFAULT_ACADEMIC_YEAR_ID = 14;
@@ -58,7 +58,7 @@ function parseGradeLine(v) {
   return n;
 }
 
-function pickLatestPastLesson(items) {
+function pastLessons(items) {
   const now = Date.now();
   return [...(items || [])]
     .filter((it) => {
@@ -66,7 +66,31 @@ function pickLatestPastLesson(items) {
       return Number.isInteger(Number(it.id)) && Number(it.id) > 0
         && Number.isFinite(ts) && ts <= now;
     })
-    .sort((a, b) => Date.parse(String(b.iso_date_time || '')) - Date.parse(String(a.iso_date_time || '')))[0] || null;
+      .sort((a, b) => Date.parse(String(b.iso_date_time || '')) - Date.parse(String(a.iso_date_time || '')));
+}
+
+function pickLatestPastLesson(items, lessonDate) {
+  return pastLessons(items).find((item) => !lessonDate || toMoscowDate(item.iso_date_time) === lessonDate) || null;
+}
+
+async function loadScheduleForMarking({ fetchPaged, config, groupId, lessonDate = '' }) {
+  return fetchPaged('/api/ej/plan/teacher/v1/schedule_items', {
+    academic_year_id: Number(config.academicYearId) || DEFAULT_ACADEMIC_YEAR_ID,
+    group_ids: Number(groupId),
+    from: lessonDate || `${new Date().getFullYear() - 1}-09-01`,
+    to: lessonDate || toMoscowDate(),
+    with_group_class_subject_info: true,
+    with_course_calendar_info: true,
+    with_lesson_info: true,
+    with_rooms_info: true,
+    with_availability_info: true
+  }, 300, 20);
+}
+
+export async function loadLessonDatesForMarking(options) {
+  const items = await loadScheduleForMarking(options);
+  const dates = pastLessons(items).map((item) => toMoscowDate(item.iso_date_time));
+  return [...new Set(dates)].slice(0, 10);
 }
 
 function pickControlForm(forms) {
@@ -248,9 +272,18 @@ export async function loadGroupsForMarking({ meshApi, fetchPaged, config, auth, 
   return { groups };
 }
 
-export async function buildMarkingPreview({ meshApi, fetchPaged, config, auth, groupId, controlFormId, namesText, marksText, comment }) {
+export async function buildMarkingPreview({ meshApi, fetchPaged, config, auth, groupId, controlFormId, lessonDate = '', namesText, marksText, comment }) {
   const gid = Number(groupId);
   if (!Number.isFinite(gid)) throw new Error('Выберите группу');
+
+  if (lessonDate) {
+    const date = new Date(`${lessonDate}T00:00:00Z`);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(lessonDate) || !Number.isFinite(date.getTime())
+      || date.toISOString().slice(0, 10) !== lessonDate) {
+      throw new Error('Некорректная дата урока');
+    }
+    if (lessonDate > toMoscowDate()) throw new Error('Дата урока не может быть в будущем');
+  }
 
   const names = splitLines(namesText);
   const grades = splitLines(marksText);
@@ -308,22 +341,12 @@ export async function buildMarkingPreview({ meshApi, fetchPaged, config, auth, g
     }
   });
 
-  const from = `${new Date().getFullYear() - 1}-09-01`;
-  const to = new Date().toISOString().slice(0, 10);
-  const scheduleItems = await fetchPaged('/api/ej/plan/teacher/v1/schedule_items', {
-    academic_year_id: academicYearId,
-    group_ids: gid,
-    from,
-    to,
-    with_group_class_subject_info: true,
-    with_course_calendar_info: true,
-    with_lesson_info: true,
-    with_rooms_info: true,
-    with_availability_info: true
-  }, 300, 20);
+  const scheduleItems = await loadScheduleForMarking({ fetchPaged, config, groupId: gid, lessonDate });
 
-  const lesson = pickLatestPastLesson(scheduleItems);
-  if (!lesson) throw new Error('Не найден прошедший урок для выбранной группы за выбранный учебный год');
+  const lesson = pickLatestPastLesson(scheduleItems, lessonDate);
+  if (!lesson) throw new Error(lessonDate
+    ? `За ${lessonDate.split('-').reverse().join('.')} нет прошедших уроков выбранной группы за выбранный учебный год`
+    : 'Не найден прошедший урок для выбранной группы за выбранный учебный год');
 
   const selectedControlFormId = Number(controlFormId);
   const controlForm = Number.isFinite(selectedControlFormId)
